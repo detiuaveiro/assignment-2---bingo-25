@@ -4,10 +4,14 @@ import sys
 import socket
 import selectors
 import json
-import messages as m
+from messages import send_msg, exact_recv, recv_msg
+
+CONNECTED_CLIENTS = {}
+CURRENT_ID = 1
 
 def dispatch( srv_socket ):
     selector = selectors.DefaultSelector()
+    global CURRENT_ID
 
     srv_socket.setblocking( False )
     selector.register( srv_socket, selectors.EVENT_READ, data=None )
@@ -31,21 +35,43 @@ def dispatch( srv_socket ):
             # Client data is available for reading
 
             else:
-                data = m.recv_msg( key.fileobj )
+                msg = recv_msg( key.fileobj )
 
-                if data == None: # Socket closed
+                '''
+                if isinstance(msg, ProtoBadFormat): # Socket closed
                     selector.unregister( key.fileobj )
                     key.fileobj.close()
                     print( 'Client removed' )
                     continue
+                elif isinstance(msg, RegisterMessage):
+                    pass 
+                '''
 
-                data = json.loads( data.decode( 'UTF-8' ) )
-                print( data )
+                if msg == None:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    print('Client removed')
+                    continue
 
-                data['body']  = data['body'].upper()
-                data = json.dumps( data )
-                data = data.encode( 'UTF-8' )
-                m.send_msg( key.fileobj, data )
+                reply = None
+                print(msg)
+
+                if msg['class'] == "Register":
+                    if msg['type'] == "Caller":
+                        if 0 in CONNECTED_CLIENTS.keys():
+                            reply = {'class': "Register NACK"}
+                        else:
+                            CONNECTED_CLIENTS[0] = key.fileobj
+                            reply = {'class': "Register ACK"}
+                    else:
+                        CONNECTED_CLIENTS[CURRENT_ID] = key.fileobj
+                        CURRENT_ID += 1
+                        reply = {'class': "Register ACK"}
+
+                if reply != None:
+                    reply = json.dumps( reply )
+                    reply = reply.encode( 'UTF-8' )
+                    send_msg( key.fileobj, reply )
 
 def main():
     if len(sys.argv) != 2:
