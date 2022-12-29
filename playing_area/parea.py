@@ -5,9 +5,12 @@ import socket
 import selectors
 import json
 from messages import send_msg, exact_recv, recv_msg
+from time import sleep
 
-CONNECTED_CLIENTS = {}                              # Dictionary holding the Connected Clients {ID: socket}
+CONNECTED_PLAYERS = {}                              # Dictionary holding the Connected Clients {ID: socket}
+CALLER = {}
 CURRENT_ID = 1
+NUMBER_OF_PLAYERS = 4
 
 def dispatch( srv_socket ):
     selector = selectors.DefaultSelector()
@@ -69,6 +72,9 @@ def read_data(msg, socket):
     if msg['class'] == "Register":
         # REGISTER MESSAGE
         reply = register_new_client(msg, socket)
+    elif msg['class'] == "BEGIN_GAME":
+        # Fazer forward da Mensagem para todos os jogadores
+        broadcast_to_players(msg)
 
 
     if reply != None:
@@ -85,25 +91,48 @@ def register_new_client(msg, socket):
     :return:
     """
     reply = None
+    global NUMBER_OF_PLAYERS
 
     if msg['type'] == "Caller":
-        if 0 in CONNECTED_CLIENTS.keys():
+        if len(CALLER.keys()) == 1:
             # We already have a Caller registered in the Playing Area
             reply = {'class': "Register NACK"}
+            send_msg(socket, reply)
         else:
-            CONNECTED_CLIENTS[0] = socket
+            CALLER.setdefault(0, socket)
             reply = {'class': "Register ACK"}
+            NUMBER_OF_PLAYERS = msg['number_of_players']
+            send_msg(socket, reply)
     else:
-        CONNECTED_CLIENTS[CURRENT_ID] = socket
-        CURRENT_ID += 1
-        reply = {'class': "Register ACK"}
+        # User do tipo Cliente
+        if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS:
+            # Recusar ligação de novo Player
+            reply = {'class': "Register NACK"}
+            send_msg(socket, reply)
+        else:
+            CONNECTED_PLAYERS[CURRENT_ID] = socket
+            CURRENT_ID += 1
+            reply = {'class': "Register ACK"}
+
+            if 0 in CALLER.keys():
+                # If a Caller exists, forward the message to them
+                send_msg(CALLER[0], msg)
 
     return reply
 
+def broadcast_to_players(msg):
+    """
+    Broadcasts a message to all Players
+    :param msg:
+    :return:
+    """
+
+    for player in CONNECTED_PLAYERS.keys():
+        send_msg(CONNECTED_PLAYERS[player], msg)
 
 def main():
-    if len(sys.argv) != 2:
-        print( 'Usage: %s port' % (sys.argv[0]) )
+    if len(sys.argv) != 3:
+        print( 'Usage: %s port number_players' % (sys.argv[0]) )
         sys.exit( 1 )
 
     with socket.socket( socket.AF_INET, socket.SOCK_STREAM ) as s:

@@ -16,6 +16,7 @@ class Player:
         self.selector = selectors.DefaultSelector()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.port = port
+        self.N = 0
 
     def connect(self):
         """
@@ -39,12 +40,32 @@ class Player:
             print("Shutting down...")
             exit()
 
+        # Se o registo foi bem sucedido, gerar par de chaves assimétricas
+        self.generate_keys()
+
+    def generate_keys(self):
+        """
+        Function responsible for the generation of this User's assymetric key pair
+        :return:
+        """
+        pass
+
     def read_data(self, socket):
         """
         This function will determine the class of the received Message, and call the code that should be executed when an instance of this Message is received
         :param socket: The calling socket
         :return:
         """
+        msg = recv_msg(socket)
+
+        if msg == None:
+            self.selector.unregister(socket)
+            socket.close()
+            print('Connection to Playing Area lost')
+            exit()
+        elif msg['class'] == "BEGIN_GAME":
+            # Fazer forward da Mensagem para todos os jogadores
+            self.N = msg['N']
 
     def loop(self):
         while True:
