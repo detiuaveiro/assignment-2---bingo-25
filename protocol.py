@@ -1,6 +1,7 @@
 import json 
 from socket import socket
 from datetime import datetime
+from messages import send_msg, recv_msg, exact_recv
 
 class Message:
     """Message Type."""
@@ -9,19 +10,18 @@ class Message:
 
 class RegisterMessage(Message):
     """Message to register username in the server."""
-    def __init__(self, type, nick, pk, ass_cc, nplayers):
+    def __init__(self, type, pk, ass_cc, nick = None):
         self.type = type
-        self.user = nick
         self.pk = pk
         self.ass_cc = ass_cc
-        self.nplayers = nplayers
+        self.nick = nick
         super().__init__("Register")
 
     def __repr__(self):
         if self.type == "Caller":
-            return json.dumps({"command": self.command, "type": self.type, "number_of_players": self.nplayers})   #caller does not have a nick 
+            return json.dumps({"command": self.command, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})   #caller does not have a nick 
         if self.type == "Player":
-            return json.dumps({"command": self.command, "type": self.type, "nick": self.nick, "number_of_players": self.nplayers})
+            return json.dumps({"command": self.command, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})
     
 class Register_ACK(Message):
     def __init__(self, ok, userID):
@@ -41,7 +41,6 @@ class Begin_Game(Message):
         return json.dumps({"command": self.command, "pks": self.pks})
     pass
 
-
 class Message_Deck(Message):
     def __init__(self, deck):
         self.deck = deck
@@ -59,7 +58,6 @@ class Commit_Card(Message):
     def __repr__(self):
         return json.dumps({"command": self.command, "deck": self.deck, "playing_card": self.card})
 
-
 class Sign_Final_Deck_ACK(Message):
     """Message to chat with other clients."""
     def __init__(self, deck):
@@ -68,7 +66,6 @@ class Sign_Final_Deck_ACK(Message):
 
     def __repr__(self):
         return json.dumps({"command": self.command, "deck": self.deck})
-
 
 #Verificação das playing cards ---------------------------------------------------
 
@@ -107,7 +104,7 @@ class Cards_Validated(Message):
     def __repr__(self):
         return json.dumps({"command": self.command})
 
-# Validação do playing deck
+# Validação do playing deck ------------------------------------------------------
 
 class ASK_Sym_Keys(Message):
     def __init__(self):
@@ -128,7 +125,7 @@ class Post_Final_Decks(Message):
         self.decks = decks
         self.id = id
         self.sym_key = sym_key
-        super().__init__("Post_Sym_Keys")
+        super().__init__("Post_Final_Decks")
     def __repr__(self):
         return json.dumps({"command": self.command, "decks": self.decks, "id": self.id, "sym_key": self.sym_key})
 
@@ -144,7 +141,7 @@ class Verify_Deck_NOK(Message):
     def __repr__(self):
         return json.dumps({"command": self.command})
 
-# Determinar Vencedor:
+# Determinar Vencedor ------------------------------------------------------------
 
 class Ask_For_Winner(Message):
     def __init__(self, id_user):
@@ -167,102 +164,176 @@ class Winner_ACK(Message):
     def __repr__(self):
         return json.dumps({"command": self.command, "id_user": self.id_user})
 
-
 class Protocol:
 
-    @classmethod
-    def register(cls, username: str) -> RegisterMessage:
-        """Creates a RegisterMessage object."""
-        obj1 = RegisterMessage(username)
-        return obj1
-
-
-    @classmethod
-    def join(cls, channel: str) -> JoinMessage:
-        """Creates a JoinMessage object."""
-        obj2 = JoinMessage(channel)
-        return obj2
-
-    @classmethod
-    def message(cls, message: str, channel: str = None) -> TextMessage:
-        """Creates a TextMessage object."""
-        ts = int(datetime.now().timestamp())
-        obj3 = TextMessage(message, channel, ts)
-        return obj3
+    # Adaptar para as mensagens raw: 
 
     @classmethod
     def send_msg(cls, connection: socket, msg: Message):
-        """Sends through a connection a Message object."""
+        '''Envia mensagem -> fica igual'''
         #connection e uma socket -> depende do channel e do user maybe
-        if msg.command == "register":
-            dicionario = {"command": "register", "user" : msg.user}
-        if msg.command == "join":
-            dicionario = {"command":"join", "channel": msg.channel}
-        if msg.command == "message":
-            if msg.channel is None:
-                dicionario = {"command":"message", "message": msg.message, "ts": msg.ts}
-            else:
-                dicionario = {"command":"message", "message": msg.message, "channel":msg.channel ,"ts": msg.ts}
+        dicionario = msg.__repr__()
 
-        size = len(json.dumps(dicionario))
-        connection.send(size.to_bytes(2, "big"))
-        connection.send(json.dumps(dicionario).encode('UTF-8'))
+        size = len(dicionario)
+        connection.send(size.to_bytes(4, "big"))
+        connection.send(dicionario.encode('UTF-8'))
 
     @classmethod
-    def recv_msg(cls, connection: socket) -> Message:
-        """Receives through a connection a Message object."""
-        data = connection.recv(2)           #recebe os primeiros 2 bytes
-        #print(data)
+    def exact_recv(cls, src, length):
+        data = bytearray(0)
 
-        if not data:
+        while len(data) != length:
+            more_data = src.recv( length - len(data) )
+            if len(more_data) == 0: # End-of-File
+                return None
+            data.extend( more_data )
+
+        if data == None:  # Socket closed
+            # Gerar uma Classe de Erro (CDProtoBadFormat)
+            return BadFormatError("No data in exact_recv")
+        return data
+
+    @classmethod
+    def recv_msg(cls, src) -> Message:
+        """Receives through a connection a Message object."""
+        data = exact_recv( src, 4 ) # 4-byte integer, network byte order (Big Endian)
+        if data == None:
             return None
 
-        tam = int.from_bytes(data, "big")
-        data = connection.recv(tam)
+        length = int.from_bytes( data, 'big' )
+        data =  exact_recv( src, length )
 
-        #data e os bytes da mensagem que recebemos em json
+        # ver qual o tipo da mensagem
+        msg = None
 
-        #verificar que tem mensagem:
         try:
-            # carregar o json para um dicionario
             dicionario = json.loads(data.decode('UTF-8'))
         except:
             raise BadFormatError(data)
 
-        #verificar q cumpre os requesitos:
-
-        #verificar q o elemento command existe
         try:
             value = dicionario["command"]
         except:
             raise BadFormatError(data)
 
-        if value == "register":
+        if value == "Register":
             try:
-                msg = Protocol.register(dicionario["user"])
+                if dicionario["type"] == "Caller":
+                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"], dicionario["nick"])
+                elif dicionario["type"] == "Player":
+                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"])
+            except:
+                raise BadFormatError(data)
+        
+        if value == "Register_ACK":
+            try:
+                msg = Register_ACK(dicionario["ok"], dicionario["userID"])
             except:
                 raise BadFormatError(data)
 
-        elif value == "join":
+        if value == "Begin_Game":
             try:
-                msg = Protocol.join(dicionario["channel"])
+                msg = Begin_Game(dicionario["pks"])
             except:
                 raise BadFormatError(data)
 
-        elif value == "message":
+        if value == "Message_Deck":
             try:
-                if "channel" not in dicionario:
-                    msg = Protocol.message(dicionario["message"], None)
-                else:
-                    msg = Protocol.message(dicionario["message"], dicionario["channel"])
+                msg = Message_Deck(dicionario["deck"])
             except:
                 raise BadFormatError(data)
 
-        else:
-            raise BadFormatError(data)
+        if value == "Commit_Card":
+            try:
+                msg = Commit_Card(dicionario["deck"], dicionario["card"])
+            except:
+                raise BadFormatError(data)
 
+        if value == "Sign_Final_Deck_ACK":
+            try:
+                msg = Sign_Final_Deck_ACK(dicionario["deck"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Verify_Card":
+            try:
+                msg = Verify_Card(dicionario["id_user"], dicionario["playing_card"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Verify_Card_OK":
+            try:
+                msg = Verify_Card_OK()
+            except:
+                raise BadFormatError(data)
+
+        if value == "Verify_Card_NOK":
+            try:
+                msg = Verify_Card_NOK(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Disqualify":
+            try:
+                msg = Disqualify(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Cards_Validated":
+            try:
+                msg = Cards_Validated()
+            except:
+                raise BadFormatError(data)
+
+        if value == "ASK_Sym_Keys":
+            try:
+                msg = ASK_Sym_Keys()
+            except:
+                raise BadFormatError(data)
+
+        if value == "Post_Sym_Keys":
+            try:
+                msg = Post_Sym_Keys(dicionario["id_user"], dicionario["sym_key"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Post_Final_Decks":
+            try:
+                msg = Post_Final_Decks(dicionario["decks"], dicionario["id"], dicionario["sym_key"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Verify_Deck_OK":
+            try:
+                msg = Verify_Deck_OK()
+            except:
+                raise BadFormatError(data)
+        
+        if value == "Verify_Deck_NOK":
+            try:
+                msg = Verify_Deck_NOK()
+            except:
+                raise BadFormatError(data)
+
+        if value == "Ask_For_Winner":
+            try:
+                msg = Ask_For_Winner(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Winner":
+            try:
+                msg = Winner(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
+
+        if value == "Winner_ACK":
+            try:
+                msg = Winner_ACK(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
         return msg
-
+        
 
 class BadFormatError(Exception):
     """Exception when source message is not in the Protocol."""
