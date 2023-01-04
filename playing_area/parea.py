@@ -4,8 +4,13 @@ import sys
 import socket
 import selectors
 import json
-from messages import send_msg, exact_recv, recv_msg
 from time import sleep
+from pathlib import Path
+
+path_root = Path(__file__).parents[1]
+sys.path.append(str(path_root))
+
+from messages.messages import send_msg, recv_msg
 
 CONNECTED_PLAYERS = {}                              # Dictionary holding the Connected Clients {ID: socket}
 CALLER = {}
@@ -14,13 +19,11 @@ NUMBER_OF_PLAYERS = 4
 
 def dispatch( srv_socket ):
     selector = selectors.DefaultSelector()
-    global CURRENT_ID
 
     srv_socket.setblocking( False )
     selector.register( srv_socket, selectors.EVENT_READ, data=None )
 
     while True:
-        print( 'Select' )
         events = selector.select( timeout=None )
         for key, mask in events:
 
@@ -39,9 +42,16 @@ def dispatch( srv_socket ):
                 msg = recv_msg( key.fileobj )
 
                 if msg == None:
+                    if key.fileobj in CALLER.values():
+                        CALLER.pop(0)
+                        print( 'Caller removed' )
+                    else:
+                        key_to_remove = next((k for k, value in CONNECTED_PLAYERS.items() if value == key.fileobj), None)
+                        if key_to_remove != None:
+                            CONNECTED_PLAYERS.pop(key_to_remove)
+                            print( 'Client removed' )
                     selector.unregister(key.fileobj)
                     key.fileobj.close()
-                    print('Client removed')
                     continue
 
                 read_data(msg, key.fileobj)
@@ -55,7 +65,7 @@ def read_data(msg, socket):
     """
 
     '''
-    CÓDIGO A SER USADO APÓIS IMPLEMENTAÇÃO DO PROTOCOLO DE MENSAGENS
+    CÓDIGO A SER USADO APÓS IMPLEMENTAÇÃO DO PROTOCOLO DE MENSAGENS
         if isinstance(msg, ProtoBadFormat): # Socket closed
             selector.unregister( key.fileobj )
             key.fileobj.close()
@@ -92,31 +102,28 @@ def register_new_client(msg, socket):
     """
     reply = None
     global NUMBER_OF_PLAYERS
+    global CURRENT_ID
 
     if msg['type'] == "Caller":
-        if len(CALLER.keys()) == 1:
+        if len(CALLER.keys()) > 0:
             # We already have a Caller registered in the Playing Area
             reply = {'class': "Register NACK"}
-            send_msg(socket, reply)
         else:
-            CALLER.setdefault(0, socket)
+            CALLER[0] = socket
             reply = {'class': "Register ACK"}
             NUMBER_OF_PLAYERS = msg['number_of_players']
-            send_msg(socket, reply)
     else:
         # User do tipo Cliente
-        if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS:
+        if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS or len(CALLER.keys()) == 0:
             # Recusar ligação de novo Player
             reply = {'class': "Register NACK"}
-            send_msg(socket, reply)
         else:
             CONNECTED_PLAYERS[CURRENT_ID] = socket
             CURRENT_ID += 1
             reply = {'class': "Register ACK"}
 
-            if 0 in CALLER.keys():
-                # If a Caller exists, forward the message to them
-                send_msg(CALLER[0], msg)
+            # Redirect to the Caller player registration
+            send_msg(CALLER[0], json.dumps(msg).encode('UTF-8'))
 
     return reply
 

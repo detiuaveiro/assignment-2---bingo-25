@@ -3,7 +3,12 @@ import selectors
 import sys
 import socket
 import json
-from messages import send_msg, exact_recv, recv_msg
+from pathlib import Path
+
+path_root = Path(__file__).parents[1]
+sys.path.append(str(path_root))
+
+from messages.messages import send_msg, recv_msg
 
 
 class Player:
@@ -23,7 +28,7 @@ class Player:
                 Function used to connect the created Socket to the Playing Area. The port passed in the command-line as an argument to this script should be the port where the Playing Area runs.
                 """
         # Conexão à socket da Playing Area
-        self.socket.connect(self.ADDRESS, self.port)
+        self.socket.connect((self.ADDRESS, self.port))
         self.selector.register(self.socket, selectors.EVENT_READ, self.read_data)
 
         # Envio da Register Message à Playing Area

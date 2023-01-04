@@ -1,6 +1,6 @@
-from caller.caller import Caller
+from caller import Caller
 
 if __name__ == "__main__":
-    c = Caller("Foo", 8080)
+    c = Caller("Foo", 5011)
     c.connect()
     c.loop()

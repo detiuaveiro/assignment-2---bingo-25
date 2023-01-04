@@ -1,7 +1,8 @@
 .idea
-project/__pycache__
 /env
 /venv
-/caller/venv
-/player/venv
-/playing_area/venv
+.vscode
+*/__pycache__
+*/.idea
+*/.vscode
+*/venv
