@@ -3,8 +3,7 @@
 import sys
 import socket
 import selectors
-import json
-from time import sleep
+import click
 from pathlib import Path
 
 path_root = Path(__file__).parents[1]
@@ -44,7 +43,7 @@ def dispatch( srv_socket ):
                     if key.fileobj in CALLER.values():
                         CALLER.pop(0)
                         print( 'Caller removed' )
-                        print( 'Shutting down, has the game now has no caller...')
+                        print( 'Shutting down, as the game now has no caller...')
                         exit()
                     else:
                         key_to_remove = next((k for k, value in CONNECTED_PLAYERS.items() if value == key.fileobj), None)
@@ -121,13 +120,11 @@ def broadcast_to_players(msg):
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
 
-def main():
-    if len(sys.argv) != 3:
-        print( 'Usage: %s port number_players' % (sys.argv[0]) )
-        sys.exit( 1 )
-
+@click.command()
+@click.option('--port', '-p', type=int, required=True, help='Port to connect to the Playing Area')
+def main(port):
     with socket.socket( socket.AF_INET, socket.SOCK_STREAM ) as s:
-        s.bind( ('0.0.0.0', int(sys.argv[1]) ) )
+        s.bind( ('0.0.0.0', port ) )
         s.listen()
         dispatch( s )
 
