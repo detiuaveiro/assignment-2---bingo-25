@@ -8,7 +8,7 @@ from pathlib import Path
 path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
 
-from messages.messages import send_msg, recv_msg
+import messages.protocol as proto
 
 
 class Player:
@@ -16,12 +16,13 @@ class Player:
 
     def __init__(self, nick: str, port):
         self.nick = nick
+        self.N = 0
 
         # Criação da Socket e do Selector
         self.selector = selectors.DefaultSelector()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.port = port
-        self.N = 0
+        
 
     def connect(self):
         """
@@ -32,14 +33,14 @@ class Player:
         self.selector.register(self.socket, selectors.EVENT_READ, self.read_data)
 
         # Envio da Register Message à Playing Area
-        message = {'class': 'Register', 'type': 'Player', 'nick': self.nick}
-        send_msg(self.socket, json.dumps(message).encode('UTF-8'))
+        message = proto.RegisterMessage("Player", nick=self.nick)
+        proto.Protocol.send_msg(self.socket, message)
 
         # Verificação da resposta recebida
-        msg = recv_msg(self.socket)
+        msg = proto.Protocol.recv_msg(self.socket)
         if msg == None:
             print("None")
-        if msg['class'] == "Register NACK":
+        if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
             print("Register Rejected")
             print("Shutting down...")
@@ -61,16 +62,15 @@ class Player:
         :param socket: The calling socket
         :return:
         """
-        msg = recv_msg(socket)
+        msg = proto.Protocol.recv_msg(socket)
 
-        if msg == None:
+        if isinstance(msg, proto.Begin_Game):
+            pass
+        else:
             self.selector.unregister(socket)
             socket.close()
             print('Connection to Playing Area lost')
             exit()
-        elif msg['class'] == "BEGIN_GAME":
-            # Fazer forward da Mensagem para todos os jogadores
-            self.N = msg['N']
 
     def loop(self):
         while True:

@@ -1,7 +1,5 @@
 import json 
 from socket import socket
-from datetime import datetime
-from messages import send_msg, recv_msg, exact_recv
 
 class Message:
     """Message Type."""
@@ -10,30 +8,37 @@ class Message:
 
 class RegisterMessage(Message):
     """Message to register username in the server."""
-    def __init__(self, type, pk, ass_cc, nick = None):
+    def __init__(self, type, pk = None, ass_cc = None, nick = None, num_players = None):
         self.type = type
         self.pk = pk
         self.ass_cc = ass_cc
         self.nick = nick
+        self.num_players = num_players
         super().__init__("Register")
 
     def __repr__(self):
         if self.type == "Caller":
-            return json.dumps({"command": self.command, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})   #caller does not have a nick 
+            return json.dumps({"command": self.command, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type, "num_players": self.num_players })
         if self.type == "Player":
             return json.dumps({"command": self.command, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})
     
 class Register_ACK(Message):
-    def __init__(self, ok, userID):
-        self.ok = ok
-        self.userID = userID
+    def __init__(self):
         super().__init__("Register_ACK")
 
     def __repr__(self):
-        return json.dumps({"command": self.command, "ok": self.ok, "userID": self.userID})
+        return json.dumps({"command": self.command})
+
+
+class Register_NACK(Message):
+    def __init__(self):
+        super().__init__("Register_NACK")
+
+    def __repr__(self):
+        return json.dumps({"command": self.command})
 
 class Begin_Game(Message):
-    def __init__(self, pks):
+    def __init__(self, pks=None):
         self.pks = pks
         super().__init__("Begin_Game")
     
@@ -165,14 +170,12 @@ class Winner_ACK(Message):
         return json.dumps({"command": self.command, "id_user": self.id_user})
 
 class Protocol:
-
     # Adaptar para as mensagens raw: 
 
     @classmethod
     def send_msg(cls, connection: socket, msg: Message):
-        '''Envia mensagem -> fica igual'''
         #connection e uma socket -> depende do channel e do user maybe
-        dicionario = msg.__repr__()
+        dicionario = repr(msg)
 
         size = len(dicionario)
         connection.send(size.to_bytes(4, "big"))
@@ -196,12 +199,13 @@ class Protocol:
     @classmethod
     def recv_msg(cls, src) -> Message:
         """Receives through a connection a Message object."""
-        data = exact_recv( src, 4 ) # 4-byte integer, network byte order (Big Endian)
+        data = Protocol.exact_recv(src, 4) # 4-byte integer, network byte order (Big Endian)
+
         if data == None:
             return None
 
-        length = int.from_bytes( data, 'big' )
-        data =  exact_recv( src, length )
+        length = int.from_bytes(data, 'big')
+        data = Protocol.exact_recv(src, length)
 
         # ver qual o tipo da mensagem
         msg = None
@@ -219,15 +223,15 @@ class Protocol:
         if value == "Register":
             try:
                 if dicionario["type"] == "Caller":
-                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"], dicionario["nick"])
+                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"], dicionario["nick"], dicionario["num_players"])
                 elif dicionario["type"] == "Player":
-                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"])
+                    msg = RegisterMessage(dicionario["type"], dicionario["pk"], dicionario["ass_cc"], dicionario["nick"])
             except:
                 raise BadFormatError(data)
         
         if value == "Register_ACK":
             try:
-                msg = Register_ACK(dicionario["ok"], dicionario["userID"])
+                msg = Register_ACK()
             except:
                 raise BadFormatError(data)
 
