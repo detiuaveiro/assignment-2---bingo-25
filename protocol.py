@@ -6,43 +6,168 @@ class Message:
     """Message Type."""
     def __init__(self, command):
         self.command = command
-    
-class JoinMessage(Message):
-    """Message to join a chat channel."""
-    def __init__(self, channel):
-        self.channel = channel
-        super().__init__("join")
-
-    def __repr__(self):
-        dicionario = {"command":"join", "channel": self.channel}
-        return json.dumps(dicionario)
 
 class RegisterMessage(Message):
     """Message to register username in the server."""
-    def __init__(self, user):
-        self.user = user
-        super().__init__("register")
+    def __init__(self, type, nick, pk, ass_cc, nplayers):
+        self.type = type
+        self.user = nick
+        self.pk = pk
+        self.ass_cc = ass_cc
+        self.nplayers = nplayers
+        super().__init__("Register")
 
     def __repr__(self):
-        return json.dumps({"command": "register", "user" :self.user})
-
+        if self.type == "Caller":
+            return json.dumps({"command": self.command, "type": self.type, "number_of_players": self.nplayers})   #caller does not have a nick 
+        if self.type == "Player":
+            return json.dumps({"command": self.command, "type": self.type, "nick": self.nick, "number_of_players": self.nplayers})
     
-class TextMessage(Message):
-    """Message to chat with other clients."""
-    def __init__(self, message, channel, ts):
-        self.message = message
-        self.channel = channel
-        self.ts = ts
-        super().__init__("message")
-        
-    def __repr__(self):
-        if self.channel is None:
-            dicionario = {"command":"message", "message": self.message, "ts":self.ts}
-        else:
-            dicionario = {"command":"message", "message": self.message, "channel":self.channel ,"ts": self.ts}
-        return json.dumps(dicionario)
+class Register_ACK(Message):
+    def __init__(self, ok, userID):
+        self.ok = ok
+        self.userID = userID
+        super().__init__("Register_ACK")
 
-        
+    def __repr__(self):
+        return json.dumps({"command": self.command, "ok": self.ok, "userID": self.userID})
+
+class Begin_Game(Message):
+    def __init__(self, pks):
+        self.pks = pks
+        super().__init__("Begin_Game")
+    
+    def __repr__(self):
+        return json.dumps({"command": self.command, "pks": self.pks})
+    pass
+
+
+class Message_Deck(Message):
+    def __init__(self, deck):
+        self.deck = deck
+        super().__init__("Message_Deck")
+
+    def __repr__(self):
+        return json.dumps({"command": self.command, "deck": self.deck})
+
+class Commit_Card(Message):
+    def __init__(self, deck, card):
+        self.deck = deck
+        self.card = card
+        super().__init__("Commit_Card")
+    
+    def __repr__(self):
+        return json.dumps({"command": self.command, "deck": self.deck, "playing_card": self.card})
+
+
+class Sign_Final_Deck_ACK(Message):
+    """Message to chat with other clients."""
+    def __init__(self, deck):
+        self.deck = deck
+        super().__init__("Sign_Final_Deck")
+
+    def __repr__(self):
+        return json.dumps({"command": self.command, "deck": self.deck})
+
+
+#Verificação das playing cards ---------------------------------------------------
+
+class Verify_Card(Message):
+    def __init__(self, id_user, playing_card):
+        self.id_user = id_user
+        self.playing_card = playing_card
+        super().__init__("Verify_Card")
+
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user, "playing_card": self.playing_card})
+
+class Verify_Card_OK(Message):
+    def __init__(self):
+        super().__init__("Verify_Card_OK")
+    def __repr__(self):
+        return json.dumps({"command": self.command})
+
+class Verify_Card_NOK(Message):
+    def __init__(self, user_id):
+        self.user_id = user_id
+        super().__init__("Verify_Card_NOK")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.user_id})
+
+class Disqualify(Message):
+    def __init__(self, id_user):
+        self.id_user = id_user
+        super().__init__("Disqualify")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user})
+
+class Cards_Validated(Message):
+    def __init__(self):
+        super().__init__("Cards_Validated")
+    def __repr__(self):
+        return json.dumps({"command": self.command})
+
+# Validação do playing deck
+
+class ASK_Sym_Keys(Message):
+    def __init__(self):
+        super().__init__("ASK_Sym_Keys")
+    def __repr__(self):
+        return json.dumps({"command": self.command})
+
+class Post_Sym_Keys(Message):
+    def __init__(self, id_user, sym_key):
+        self.id_user = id_user
+        self.sym_key = sym_key
+        super().__init__("Post_Sym_Keys")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user, "sym_key": self.sym_key})
+
+class Post_Final_Decks(Message):
+    def __init__(self, decks, id, sym_key):
+        self.decks = decks
+        self.id = id
+        self.sym_key = sym_key
+        super().__init__("Post_Sym_Keys")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "decks": self.decks, "id": self.id, "sym_key": self.sym_key})
+
+class Verify_Deck_OK(Message):
+    def __init__(self):
+        super().__init__("Verify_Deck_OK")
+    def __repr__(self):
+        return json.dumps({"command": self.command})
+
+class Verify_Deck_NOK(Message):
+    def __init__(self):
+        super().__init__("Verify_Deck_NOK")
+    def __repr__(self):
+        return json.dumps({"command": self.command})
+
+# Determinar Vencedor:
+
+class Ask_For_Winner(Message):
+    def __init__(self, id_user):
+        self.id_user = id_user
+        super().__init__("Ask_For_Winner")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user})
+
+class Winner(Message):
+    def __init__(self, id_user):
+        self.id_user = id_user
+        super().__init__("Winner")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user})
+
+class Winner_ACK(Message):
+    def __init__(self, id_user):
+        self.id_user = id_user
+        super().__init__("Winner_ACK")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "id_user": self.id_user})
+
+
 class Protocol:
 
     @classmethod
