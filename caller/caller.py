@@ -56,13 +56,6 @@ class Caller:
         # Se o registo foi bem sucedido, gerar par de chaves assimétricas
         self.generate_keys()
 
-    def generate_keys(self):
-        """
-        Function responsible for the generation of this User's assymetric key pair
-        :return:
-        """
-
-
     def read_data(self, socket):
         """
         This function will determine the class of the received Message, and call the code that should be executed when an instance of this Message is received
@@ -88,6 +81,7 @@ class Caller:
                 reply = self.generate_deck()
         elif isinstance(msg, proto.Commit_Card):
             self.PLAYERS[msg.id_user]["card"] = msg.card
+            self.PLAYERS[msg.id_user]["cheated"] = False
             self.PLAYERS[msg.id_user]["deck"] = msg.deck
         elif isinstance(msg, proto.Message_Deck):
             # RECEIVED THE PLAYING DECK
@@ -96,6 +90,20 @@ class Caller:
             #TODO: Assinar o deck final
             print("Signing the Final Deck...")
             reply = proto.Sign_Final_Deck_ACK({user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS})
+
+            print("Starting Playing Cards validation process...")
+            self.verify_cards()
+        elif isinstance(msg, proto.Verified_Cards):
+            # Verify if another Player detected cheating
+            for player in msg.verified_playing_cards:
+                if not msg.verified_playing_cards[player]:
+                    self.PLAYERS[player]["cheated"] = True
+
+            # If a player has cheated, disqualify them
+            for player in self.PLAYERS:
+                if self.PLAYERS[player]["cheated"]:
+                    print(f"Player {player} has been disqualified.")
+                    proto.Protocol.send_msg(socket, proto.Disqualify(player))
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -104,6 +112,13 @@ class Caller:
 
         if reply != None:
             proto.Protocol.send_msg(socket, reply)
+
+    def generate_keys(self):
+        """
+        Function responsible for the generation of this User's assymetric key pair
+        :return:
+        """
+        pass
 
     def generate_deck(self):
         """
@@ -115,6 +130,16 @@ class Caller:
 
         # Criar mensagem do tipo POST_INITIAL_DECK
         return proto.Message_Deck(self.deck)
+
+    def verify_cards(self):
+        for player in self.PLAYERS.keys():
+            #TODO: Verificar assinatura
+            print(f"Verifying Player {player}'s Playing Card")
+
+            if len(set(self.PLAYERS[player]["card"])) != int(self.N/4):
+                print(f"Player {player} has cheated!")
+                self.PLAYERS[player]["cheated"] = True
+
 
     def loop(self):
         while True:

@@ -23,11 +23,12 @@ class RegisterMessage(Message):
             return json.dumps({"command": self.command, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})
     
 class Register_ACK(Message):
-    def __init__(self):
+    def __init__(self, id):
+        self.id = id
         super().__init__("Register_ACK")
 
     def __repr__(self):
-        return json.dumps({"command": self.command})
+        return json.dumps({"command": self.command, "id": self.id})
 
 
 class Register_NACK(Message):
@@ -90,11 +91,11 @@ class Verify_Card_OK(Message):
         return json.dumps({"command": self.command})
 
 class Verify_Card_NOK(Message):
-    def __init__(self, user_id):
-        self.user_id = user_id
+    def __init__(self, users):
+        self.users = users
         super().__init__("Verify_Card_NOK")
     def __repr__(self):
-        return json.dumps({"command": self.command, "id_user": self.user_id})
+        return json.dumps({"command": self.command, "users": self.users})
 
 class Verified_Cards(Message):
     def __init__(self, verified_playing_cards):
@@ -238,7 +239,7 @@ class Protocol:
         
         if value == "Register_ACK":
             try:
-                msg = Register_ACK()
+                msg = Register_ACK(dicionario["id"])
             except:
                 raise BadFormatError(data)
 

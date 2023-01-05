@@ -80,7 +80,9 @@ def read_data(msg, socket):
         deck_generation(msg.deck)
     elif isinstance(msg, proto.Sign_Final_Deck_ACK):
         print("Step 2: Validating playing cards")
-        validate_playing_cards(msg.playing_cards)
+        verify_playing_cards(msg.playing_cards)
+    elif isinstance(msg, proto.Disqualify):
+        broadcast_to_players(msg)
 
     if reply != None:
         proto.Protocol.send_msg(socket, reply)
@@ -169,8 +171,9 @@ def verify_playing_cards(playing_cards):
         reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
 
         if isinstance(reply, proto.Verify_Card_NOK):
-            print(f"Card from player {reply.user_id} is invalid.")
-            verified_playing_cards[reply.user_id] = False
+            for player in reply.users:
+                print(f"Card from player {player} is invalid.")
+                verified_playing_cards[player] = False
     
     # Enviar a resposta ao Caller
     proto.Protocol.send_msg(CALLER[0], proto.Verified_Cards(verified_playing_cards))

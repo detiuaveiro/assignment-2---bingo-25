@@ -19,6 +19,7 @@ class Player:
         self.nick = nick
         self.N = 0                                                              # Números a considerar na geração do Playing Deck
         self.players_info = {}                                                  # Dicionário que vai guardar info de todos os jogadores
+        self.id = None
 
         # Criação da Socket e do Selector
         self.selector = selectors.DefaultSelector()
@@ -47,32 +48,11 @@ class Player:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
+            self.id = msg.id
             print("Register Accepted")
 
         # Se o registo foi bem sucedido, gerar par de chaves assimétricas
         self.generate_keys()
-
-    def generate_keys(self):
-        """
-        Function responsible for the generation of this User's assymetric key pair
-        :return:
-        """
-        pass
-
-    def shuffle_deck(self, deck):
-        """
-        Function responsible for the shuffling of the Playing Deck
-        :return:
-        """
-        #TODO: Encrypt the numbers in the deck
-        return random.sample(deck, len(deck))
-
-    def generate_playing_card(self, N):
-        """
-        Function responsible for the generation of the Playing Deck
-        :return:
-        """
-        return random.sample(list(range(1, N + 1)), int(N/4))
 
     def read_data(self, socket):
         """
@@ -95,11 +75,24 @@ class Player:
             suffled_deck = self.shuffle_deck(msg.deck)
 
             print("Generating Playing Card...")
-            playing_card = self.generate_playing_card(self.N)
+            playing_card = self.generate_playing_card()
 
-            reply = proto.Commit_Card(suffled_deck, playing_card) 
+            reply = proto.Commit_Card(suffled_deck, playing_card)
         elif isinstance(msg, proto.Verify_Cards):
-            pass
+            # Initiate Playing Cards verification process
+            reply = self.verify_cards(msg)
+        elif isinstance(msg, proto.Disqualify):
+            # Someone has been disqualified
+            if msg.id_user == self.id:
+                # I have been disqualified
+                self.selector.unregister(socket)
+                socket.close()
+                print('I have been disqualified. Exiting...')
+                exit()
+            else:
+                # Someone else was disqualified
+                print(f"Player {msg.id_user} has been disqualified.")
+                self.players_info.pop(msg.id_user)
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -108,6 +101,47 @@ class Player:
 
         if reply is not None:
             proto.Protocol.send_msg(socket, reply)
+
+    def generate_keys(self):
+        """
+        Function responsible for the generation of this User's assymetric key pair
+        :return:
+        """
+        pass
+
+    def shuffle_deck(self, deck):
+        """
+        Function responsible for the shuffling of the Playing Deck
+        :return:
+        """
+        #TODO: Encrypt the numbers in the deck
+        return random.sample(deck, len(deck))
+
+    def generate_playing_card(self):
+        """
+        Function responsible for the generation of the Playing Deck
+        :return:
+        """
+        return random.sample(list(range(1, self.N + 1)), int(self.N/4))
+
+    def verify_cards(self, msg):
+        cheaters = []
+
+        for player in msg.playing_cards.keys():
+            if player == self.id:
+                continue
+
+            #TODO: Verificar assinatura
+            print(f"Verifying Player {player}'s Playing Card")
+
+            if len(set(msg.playing_cards[player])) != int(self.N/4):
+                print(f"Player {player} has cheated!")
+                cheaters.append(player)
+
+        if len(cheaters) > 0:
+            return proto.Verify_Card_NOK(cheaters)
+        else:
+            return proto.Verify_Card_OK()
 
     def loop(self):
         while True:
