@@ -50,6 +50,8 @@ class Caller:
             print("Register Rejected")
             print("Shutting down...")
             exit()
+        elif isinstance(msg, proto.Register_ACK):
+            print("Register Accepted")
 
         # Se o registo foi bem sucedido, gerar par de chaves assimétricas
         self.generate_keys()
@@ -68,6 +70,7 @@ class Caller:
         :return:
         """
         msg = proto.Protocol.recv_msg(socket)
+        print(msg)
 
         reply = None
 
@@ -79,11 +82,20 @@ class Caller:
                 # Atingido limite de jogadores: Mandar mensagem BEGIN GAME para a Playing Area
                 print("The limit of available players has been reached. I will now start the game.")
                 reply = proto.Begin_Game()
-                reply = json.dumps(reply).encode('UTF-8')
                 proto.Protocol.send_msg(socket, reply)
 
                 # Gerar o deck e criar a mensagem para enviá-lo
                 reply = self.generate_deck()
+        elif isinstance(msg, proto.Commit_Card):
+            self.PLAYERS[msg.id_user]["card"] = msg.card
+            self.PLAYERS[msg.id_user]["deck"] = msg.deck
+        elif isinstance(msg, proto.Message_Deck):
+            # RECEIVED THE PLAYING DECK
+            self.deck = msg.deck
+            #TODO: Desencriptar cada número
+            #TODO: Assinar o deck final
+            print("Signing the Final Deck...")
+            reply = proto.Sign_Final_Deck_ACK({user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS})
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -91,7 +103,6 @@ class Caller:
             exit()
 
         if reply != None:
-            reply = json.dumps(reply).encode('UTF-8')
             proto.Protocol.send_msg(socket, reply)
 
     def generate_deck(self):

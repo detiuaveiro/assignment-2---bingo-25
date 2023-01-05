@@ -55,33 +55,33 @@ class Message_Deck(Message):
         return json.dumps({"command": self.command, "deck": self.deck})
 
 class Commit_Card(Message):
-    def __init__(self, deck, card):
+    def __init__(self, deck, card, id_user=None):
         self.deck = deck
         self.card = card
+        self.id_user = id_user
         super().__init__("Commit_Card")
     
     def __repr__(self):
-        return json.dumps({"command": self.command, "deck": self.deck, "playing_card": self.card})
+        return json.dumps({"command": self.command, "deck": self.deck, "card": self.card, "id_user": self.id_user})
 
 class Sign_Final_Deck_ACK(Message):
     """Message to chat with other clients."""
-    def __init__(self, deck):
-        self.deck = deck
+    def __init__(self, playing_cards):
+        self.playing_cards = playing_cards
         super().__init__("Sign_Final_Deck")
 
     def __repr__(self):
-        return json.dumps({"command": self.command, "deck": self.deck})
+        return json.dumps({"command": self.command, "playing_cards": self.playing_cards})
 
 #Verificação das playing cards ---------------------------------------------------
 
-class Verify_Card(Message):
-    def __init__(self, id_user, playing_card):
-        self.id_user = id_user
-        self.playing_card = playing_card
+class Verify_Cards(Message):
+    def __init__(self, playing_cards):
+        self.playing_cards = playing_cards
         super().__init__("Verify_Card")
 
     def __repr__(self):
-        return json.dumps({"command": self.command, "id_user": self.id_user, "playing_card": self.playing_card})
+        return json.dumps({"command": self.command, "playing_cards": self.playing_cards})
 
 class Verify_Card_OK(Message):
     def __init__(self):
@@ -95,6 +95,13 @@ class Verify_Card_NOK(Message):
         super().__init__("Verify_Card_NOK")
     def __repr__(self):
         return json.dumps({"command": self.command, "id_user": self.user_id})
+
+class Verified_Cards(Message):
+    def __init__(self, verified_playing_cards):
+        self.verified_playing_cards = verified_playing_cards
+        super().__init__("Verified_Cards")
+    def __repr__(self):
+        return json.dumps({"command": self.command, "verified_playing_cards": self.verified_playing_cards})
 
 class Disqualify(Message):
     def __init__(self, id_user):
@@ -249,19 +256,19 @@ class Protocol:
 
         if value == "Commit_Card":
             try:
-                msg = Commit_Card(dicionario["deck"], dicionario["card"])
+                msg = Commit_Card(dicionario["deck"], dicionario["card"], dicionario["id_user"])
             except:
                 raise BadFormatError(data)
 
         if value == "Sign_Final_Deck_ACK":
             try:
-                msg = Sign_Final_Deck_ACK(dicionario["deck"])
+                msg = Sign_Final_Deck_ACK(dicionario["playing_cards"])
             except:
                 raise BadFormatError(data)
 
-        if value == "Verify_Card":
+        if value == "Verify_Cards":
             try:
-                msg = Verify_Card(dicionario["id_user"], dicionario["playing_card"])
+                msg = Verify_Cards(dicionario["playing_cards"])
             except:
                 raise BadFormatError(data)
 
@@ -274,6 +281,12 @@ class Protocol:
         if value == "Verify_Card_NOK":
             try:
                 msg = Verify_Card_NOK(dicionario["id_user"])
+            except:
+                raise BadFormatError(data)
+        
+        if value == "Verified_Cards":
+            try:
+                msg = Verified_Cards(dicionario["verified_playing_cards"])
             except:
                 raise BadFormatError(data)
 

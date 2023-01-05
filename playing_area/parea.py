@@ -49,7 +49,7 @@ def dispatch( srv_socket ):
                         key_to_remove = next((k for k, value in CONNECTED_PLAYERS.items() if value == key.fileobj), None)
                         if key_to_remove != None:
                             CONNECTED_PLAYERS.pop(key_to_remove)
-                            print( 'Client removed' )
+                            print( 'Player removed' )
                     selector.unregister(key.fileobj)
                     key.fileobj.close()
                     continue
@@ -74,11 +74,13 @@ def read_data(msg, socket):
         #TODO: Incluir na mensagem as chaves públicas de todos os jogadores
         print("The game will now start...")
         print("Step 1. Generation of the Playing Deck and the Player Cards")
-        broadcast_to_everyone(msg)
+        broadcast_to_players(msg)
     elif isinstance(msg, proto.Message_Deck):
         # Processo de shuffling do deck
         deck_generation(msg.deck)
-
+    elif isinstance(msg, proto.Sign_Final_Deck_ACK):
+        print("Step 2: Validating playing cards")
+        validate_playing_cards(msg.playing_cards)
 
     if reply != None:
         proto.Protocol.send_msg(socket, reply)
@@ -137,10 +139,41 @@ def deck_generation(initial_deck):
         # Esperar pela resposta
         #TODO: Verificar isto
         reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+        setattr(reply, 'id_user', player)
+
+        proto.Protocol.send_msg(CALLER[0], reply)
+
+        print("Sent deck to Caller.")
 
         if isinstance(reply, proto.Commit_Card):
             current_deck = reply.deck
             #TODO: Decidir onde guardar as playing cards de cada jogador
+
+    proto.Protocol.send_msg(CALLER[0], proto.Message_Deck(current_deck))
+
+
+def verify_playing_cards(playing_cards):
+    """
+    The Playing Area will receive the Playing Cards from each Player, and will verify whether they are valid or not.
+    :return:
+    """
+    verified_playing_cards = {user_id : True for user_id in CONNECTED_PLAYERS.keys()}
+    print("Validating playing cards...")
+    for player in CONNECTED_PLAYERS.keys():
+        # Enviar a carta ao jogador
+        print(f"Sending playing cards to player {player}.")
+        msg = proto.Verify_Cards(playing_cards)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+
+        # Esperar pela resposta 
+        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+
+        if isinstance(reply, proto.Verify_Card_NOK):
+            print(f"Card from player {reply.user_id} is invalid.")
+            verified_playing_cards[reply.user_id] = False
+    
+    # Enviar a resposta ao Caller
+    proto.Protocol.send_msg(CALLER[0], proto.Verified_Cards(verified_playing_cards))
 
 
 def broadcast_to_players(msg):
