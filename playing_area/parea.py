@@ -71,7 +71,14 @@ def read_data(msg, socket):
         reply = register_new_client(msg, socket)
     elif isinstance(msg, proto.Begin_Game):
         # Fazer forward da Mensagem para todos os jogadores
-        broadcast_to_players(msg)
+        #TODO: Incluir na mensagem as chaves públicas de todos os jogadores
+        print("The game will now start...")
+        print("Step 1. Generation of the Playing Deck and the Player Cards")
+        broadcast_to_everyone(msg)
+    elif isinstance(msg, proto.Message_Deck):
+        # Processo de shuffling do deck
+        deck_generation(msg.deck)
+
 
     if reply != None:
         proto.Protocol.send_msg(socket, reply)
@@ -111,6 +118,31 @@ def register_new_client(msg, socket):
 
     return reply
 
+def deck_generation(initial_deck):
+    """
+    The Playing Area will redirect the initial deck created by the Caller to each Player, in turn, in order to shuffle the deck.
+    During this process, the Playing Area will also receive the Playing Card form each Player
+    :param initial_deck: The initial deck created by the Caller
+    """
+    # TODO: Decidir como guardar as diferentes iterações do deck durante o shuffling
+    print("Deck shuffling process beginning: ")
+    current_deck = initial_deck
+
+    for player in CONNECTED_PLAYERS.keys():
+        # Enviar o deck ao jogador
+        print(f"Sending deck to player {player}.")
+        msg = proto.Message_Deck(current_deck)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+
+        # Esperar pela resposta
+        #TODO: Verificar isto
+        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+
+        if isinstance(reply, proto.Commit_Card):
+            current_deck = reply.deck
+            #TODO: Decidir onde guardar as playing cards de cada jogador
+
+
 def broadcast_to_players(msg):
     """
     Broadcasts a message to all Players
@@ -119,6 +151,18 @@ def broadcast_to_players(msg):
     """
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+
+
+def broadcast_to_everyone(msg):
+    """
+    Broadcasts a message to all Users (Players + Caller)
+    :param msg:
+    :return:
+    """
+    for player in CONNECTED_PLAYERS.keys():
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+
+    proto.Protocol.send_msg(CALLER[0], msg)
 
 @click.command()
 @click.option('--port', '-p', type=int, required=True, help='Port to connect to the Playing Area')

@@ -18,6 +18,8 @@ class Player:
         self.nick = nick
         self.N = 0
 
+        self.players_info = {}                                                  # Dicionário que vai guardar info de todos os jogadores
+
         # Criação da Socket e do Selector
         self.selector = selectors.DefaultSelector()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,13 +40,15 @@ class Player:
 
         # Verificação da resposta recebida
         msg = proto.Protocol.recv_msg(self.socket)
-        if msg == None:
-            print("None")
+
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
             print("Register Rejected")
             print("Shutting down...")
             exit()
+        elif isinstance(msg, proto.Begin_Game):
+            print("The game is starting...")
+            #TODO: Guardar as public keys dos outros jogadores
 
         # Se o registo foi bem sucedido, gerar par de chaves assimétricas
         self.generate_keys()
@@ -65,6 +69,7 @@ class Player:
         msg = proto.Protocol.recv_msg(socket)
 
         if isinstance(msg, proto.Begin_Game):
+            #TODO: Guardar as chaves públicas de todos os jogadores
             pass
         else:
             self.selector.unregister(socket)

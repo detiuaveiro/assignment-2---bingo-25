@@ -3,6 +3,7 @@ import selectors
 import sys
 import socket
 import json
+import random
 from pathlib import Path
 
 path_root = Path(__file__).parents[1]
@@ -21,6 +22,8 @@ class Caller:
         self.PLAYERS = {}
         self.player_counter = 0
         self.N = N                                                              # Números a considerar na geração do Playing Deck
+
+        self.deck = []
 
         # Criação da Socket e do Selector
         self.selector = selectors.DefaultSelector()
@@ -56,7 +59,7 @@ class Caller:
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        pass
+
 
     def read_data(self, socket):
         """
@@ -74,7 +77,13 @@ class Caller:
             self.PLAYERS[self.player_counter] = {"nick": msg.nick}
             if self.player_counter == self.number_of_players:
                 # Atingido limite de jogadores: Mandar mensagem BEGIN GAME para a Playing Area
+                print("The limit of available players has been reached. I will now start the game.")
                 reply = proto.Begin_Game()
+                reply = json.dumps(reply).encode('UTF-8')
+                proto.Protocol.send_msg(socket, reply)
+
+                # Gerar o deck e criar a mensagem para enviá-lo
+                reply = self.generate_deck()
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -84,6 +93,17 @@ class Caller:
         if reply != None:
             reply = json.dumps(reply).encode('UTF-8')
             proto.Protocol.send_msg(socket, reply)
+
+    def generate_deck(self):
+        """
+        Function that will create the set of N numbers, to be shuffled by all the Players of the game.
+        """
+        #TODO: Encriptar cada número
+        print("Creating the Playing Deck...")
+        self.deck = random.sample(list(range(self.N)), self.N)
+
+        # Criar mensagem do tipo POST_INITIAL_DECK
+        return proto.Message_Deck(self.deck)
 
     def loop(self):
         while True:
