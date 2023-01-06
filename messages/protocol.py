@@ -69,7 +69,7 @@ class Sign_Final_Deck_ACK(Message):
     """Message to chat with other clients."""
     def __init__(self, playing_cards):
         self.playing_cards = playing_cards
-        super().__init__("Sign_Final_Deck")
+        super().__init__("Sign_Final_Deck_ACK")
 
     def __repr__(self):
         return json.dumps({"command": self.command, "playing_cards": self.playing_cards})
@@ -79,7 +79,7 @@ class Sign_Final_Deck_ACK(Message):
 class Verify_Cards(Message):
     def __init__(self, playing_cards):
         self.playing_cards = playing_cards
-        super().__init__("Verify_Card")
+        super().__init__("Verify_Cards")
 
     def __repr__(self):
         return json.dumps({"command": self.command, "playing_cards": self.playing_cards})
@@ -97,12 +97,13 @@ class Verify_Card_NOK(Message):
     def __repr__(self):
         return json.dumps({"command": self.command, "users": self.users})
 
-class Verified_Cards(Message):
-    def __init__(self, verified_playing_cards):
-        self.verified_playing_cards = verified_playing_cards
-        super().__init__("Verified_Cards")
+class Cheat_Verify(Message):
+    def __init__(self, cheaters, stage):
+        self.cheaters = cheaters
+        self.stage = stage
+        super().__init__("Cheat_Verify")
     def __repr__(self):
-        return json.dumps({"command": self.command, "verified_playing_cards": self.verified_playing_cards})
+        return json.dumps({"command": self.command, "cheaters": self.cheaters, "stage": self.stage})
 
 class Disqualify(Message):
     def __init__(self, id_user):
@@ -119,28 +120,26 @@ class Cards_Validated(Message):
 
 # Validação do playing deck ------------------------------------------------------
 
-class ASK_Sym_Keys(Message):
+class Ask_Sym_Keys(Message):
     def __init__(self):
-        super().__init__("ASK_Sym_Keys")
+        super().__init__("Ask_Sym_Keys")
     def __repr__(self):
         return json.dumps({"command": self.command})
 
 class Post_Sym_Keys(Message):
-    def __init__(self, id_user, sym_key):
-        self.id_user = id_user
+    def __init__(self, sym_key):
         self.sym_key = sym_key
         super().__init__("Post_Sym_Keys")
     def __repr__(self):
-        return json.dumps({"command": self.command, "id_user": self.id_user, "sym_key": self.sym_key})
+        return json.dumps({"command": self.command, "sym_key": self.sym_key})
 
 class Post_Final_Decks(Message):
-    def __init__(self, decks, id, sym_key):
+    def __init__(self, decks, signed_deck):
         self.decks = decks
-        self.id = id
-        self.sym_key = sym_key
+        self.signed_deck = signed_deck
         super().__init__("Post_Final_Decks")
     def __repr__(self):
-        return json.dumps({"command": self.command, "decks": self.decks, "id": self.id, "sym_key": self.sym_key})
+        return json.dumps({"command": self.command, "decks": self.decks, "signed_deck": self.signed_deck})
 
 class Verify_Deck_OK(Message):
     def __init__(self):
@@ -149,26 +148,27 @@ class Verify_Deck_OK(Message):
         return json.dumps({"command": self.command})
 
 class Verify_Deck_NOK(Message):
-    def __init__(self):
+    def __init__(self, users):
         super().__init__("Verify_Deck_NOK")
+        self.users = users
     def __repr__(self):
-        return json.dumps({"command": self.command})
+        return json.dumps({"command": self.command, "users": self.users})
 
 # Determinar Vencedor ------------------------------------------------------------
 
 class Ask_For_Winner(Message):
-    def __init__(self, id_user):
-        self.id_user = id_user
+    def __init__(self):
         super().__init__("Ask_For_Winner")
     def __repr__(self):
-        return json.dumps({"command": self.command, "id_user": self.id_user})
+        return json.dumps({"command": self.command})
 
 class Winner(Message):
-    def __init__(self, id_user):
-        self.id_user = id_user
+    def __init__(self, id, id_winner):
+        self.id = id
+        self.id_winner = id_winner
         super().__init__("Winner")
     def __repr__(self):
-        return json.dumps({"command": self.command, "id_user": self.id_user})
+        return json.dumps({"command": self.command, "id": self.id, "id_winner": self.id_winner})
 
 class Winner_ACK(Message):
     def __init__(self, id_user):
@@ -285,9 +285,9 @@ class Protocol:
             except:
                 raise BadFormatError(data)
         
-        if value == "Verified_Cards":
+        if value == "Cheat_Verify":
             try:
-                msg = Verified_Cards(dicionario["verified_playing_cards"])
+                msg = Cheat_Verify(dicionario["cheaters"], dicionario["stage"])
             except:
                 raise BadFormatError(data)
 
@@ -303,21 +303,21 @@ class Protocol:
             except:
                 raise BadFormatError(data)
 
-        if value == "ASK_Sym_Keys":
+        if value == "Ask_Sym_Keys":
             try:
-                msg = ASK_Sym_Keys()
+                msg = Ask_Sym_Keys()
             except:
                 raise BadFormatError(data)
 
         if value == "Post_Sym_Keys":
             try:
-                msg = Post_Sym_Keys(dicionario["id_user"], dicionario["sym_key"])
+                msg = Post_Sym_Keys(dicionario["sym_key"])
             except:
                 raise BadFormatError(data)
 
         if value == "Post_Final_Decks":
             try:
-                msg = Post_Final_Decks(dicionario["decks"], dicionario["id"], dicionario["sym_key"])
+                msg = Post_Final_Decks(dicionario["decks"], dicionario["signed_deck"])
             except:
                 raise BadFormatError(data)
 
@@ -329,19 +329,19 @@ class Protocol:
         
         if value == "Verify_Deck_NOK":
             try:
-                msg = Verify_Deck_NOK()
+                msg = Verify_Deck_NOK(dicionario["users"])
             except:
                 raise BadFormatError(data)
 
         if value == "Ask_For_Winner":
             try:
-                msg = Ask_For_Winner(dicionario["id_user"])
+                msg = Ask_For_Winner()
             except:
                 raise BadFormatError(data)
 
         if value == "Winner":
             try:
-                msg = Winner(dicionario["id_user"])
+                msg = Winner(dicionario["id"], dicionario["id_winner"])
             except:
                 raise BadFormatError(data)
 

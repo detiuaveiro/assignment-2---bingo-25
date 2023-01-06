@@ -79,11 +79,25 @@ def read_data(msg, socket):
         # Processo de shuffling do deck
         deck_generation(msg.deck)
     elif isinstance(msg, proto.Sign_Final_Deck_ACK):
-        print("Step 2: Validating playing cards")
+        print("Step 2: Validating player cards")
         verify_playing_cards(msg.playing_cards)
     elif isinstance(msg, proto.Disqualify):
         broadcast_to_players(msg)
-
+    elif isinstance(msg, proto.Cards_Validated):
+        print("Step 3: Validating the Playing Deck")
+        # Pedir chaves simétricas a todos os Utilizadors e enviar para o Caller
+        reply = share_sym_keys()
+    elif isinstance(msg, proto.Post_Final_Decks):
+        print("Received all decks and symmetric keys. Broadcasting to players...")
+        verify_playing_deck(msg)
+    elif isinstance(msg, proto.Ask_For_Winner):
+        print("Step 4: Determining the Winner")
+        broadcast_to_players(msg)
+    elif isinstance(msg, proto.Winner):
+        proto.Protocol.send_msg(CALLER[0], msg)
+    elif isinstance(msg, proto.Winner_ACK):
+        broadcast_to_players(msg)
+        print("The game as finished")
     if reply != None:
         proto.Protocol.send_msg(socket, reply)
 
@@ -106,7 +120,7 @@ def register_new_client(msg, socket):
         else:
             CALLER[0] = socket
             NUMBER_OF_PLAYERS = msg.num_players
-            reply = proto.Register_ACK()
+            reply = proto.Register_ACK(0)
     else:
         # User do tipo Cliente
         if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS or len(CALLER.keys()) == 0:
@@ -114,8 +128,8 @@ def register_new_client(msg, socket):
             reply = proto.Register_NACK()
         else:
             CONNECTED_PLAYERS[CURRENT_ID] = socket
+            reply = proto.Register_ACK(CURRENT_ID)
             CURRENT_ID += 1
-            reply = proto.Register_ACK()
 
             # Redirect to the Caller player registration
             proto.Protocol.send_msg(CALLER[0], msg)
@@ -128,7 +142,6 @@ def deck_generation(initial_deck):
     During this process, the Playing Area will also receive the Playing Card form each Player
     :param initial_deck: The initial deck created by the Caller
     """
-    # TODO: Decidir como guardar as diferentes iterações do deck durante o shuffling
     print("Deck shuffling process beginning: ")
     current_deck = initial_deck
 
@@ -139,7 +152,6 @@ def deck_generation(initial_deck):
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
 
         # Esperar pela resposta
-        #TODO: Verificar isto
         reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
         setattr(reply, 'id_user', player)
 
@@ -149,7 +161,6 @@ def deck_generation(initial_deck):
 
         if isinstance(reply, proto.Commit_Card):
             current_deck = reply.deck
-            #TODO: Decidir onde guardar as playing cards de cada jogador
 
     proto.Protocol.send_msg(CALLER[0], proto.Message_Deck(current_deck))
 
@@ -176,7 +187,44 @@ def verify_playing_cards(playing_cards):
                 verified_playing_cards[player] = False
     
     # Enviar a resposta ao Caller
-    proto.Protocol.send_msg(CALLER[0], proto.Verified_Cards(verified_playing_cards))
+    proto.Protocol.send_msg(CALLER[0], proto.Cheat_Verify(verified_playing_cards, "Cards"))
+
+
+def verify_playing_deck(msg):
+    players_cheated = {user_id: True for user_id in CONNECTED_PLAYERS.keys()}
+    print("Validating playing deck...")
+
+    for player in CONNECTED_PLAYERS.keys():
+        # Enviar a carta ao jogador
+        print(f"Sending playing deck to player {player}.")
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+
+        # Esperar pela resposta
+        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+
+        if isinstance(reply, proto.Verify_Deck_NOK):
+            for player in reply.users:
+                print(f"Player {player} cheated!")
+                players_cheated[player] = False
+
+    # Enviar a resposta ao Caller
+    proto.Protocol.send_msg(CALLER[0], proto.Cheat_Verify(players_cheated, "Deck"))
+
+def share_sym_keys():
+    sym_keys = {}
+
+    # Pedir a chave simétrica a todos os Players
+    msg = proto.Ask_Sym_Keys()
+
+    for player in CONNECTED_PLAYERS.keys():
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+
+        print(reply)
+        sym_keys[player] = reply.sym_key
+
+    # Enviar chaves simétricas ao Caller
+    return proto.Post_Sym_Keys(sym_keys)
 
 
 def broadcast_to_players(msg):
