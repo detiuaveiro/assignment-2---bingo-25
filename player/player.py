@@ -10,6 +10,7 @@ path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
 
 import messages.protocol as proto
+import security.security as secure
 
 
 class Player:
@@ -122,6 +123,8 @@ class Player:
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
+        self.private_key, self.public_key =secure.gen_assymetric_key
+        return self.private_key, self.public_key
         pass
 
     def shuffle_deck(self, deck):
