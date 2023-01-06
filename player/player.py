@@ -33,8 +33,8 @@ class Player:
 
     def connect(self):
         """
-                Function used to connect the created Socket to the Playing Area. The port passed in the command-line as an argument to this script should be the port where the Playing Area runs.
-                """
+        Function used to connect the created Socket to the Playing Area. The port passed in the command-line as an argument to this script should be the port where the Playing Area runs.
+        """
         # Conexão à socket da Playing Area
         self.socket.connect((self.ADDRESS, self.port))
         self.selector.register(self.socket, selectors.EVENT_READ, self.read_data)
@@ -125,7 +125,6 @@ class Player:
         """
         self.private_key, self.public_key =secure.gen_assymetric_key
         return self.private_key, self.public_key
-        pass
 
     def shuffle_deck(self, deck):
         """

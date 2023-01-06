@@ -10,7 +10,7 @@ path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
 
 import messages.protocol as proto
-
+import security.security as secure
 
 class Caller:
     ADDRESS = '127.0.0.1'
@@ -165,7 +165,8 @@ class Caller:
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        pass
+        self.private_key, self.public_key =secure.gen_assymetric_key
+        return self.private_key, self.public_key
 
     def generate_deck(self):
         """
