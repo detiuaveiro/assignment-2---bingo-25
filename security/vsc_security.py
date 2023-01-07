@@ -11,7 +11,7 @@ def print_slots(slots):
 
         slot_info = pkcs11.getSlotInfo(slot)
         print(f"Info: \n{slot_info} \n")
-
+"""
 def list_content_of_card(slot):
     all_attr = list(PyKCS11.CKA.keys())
     all_attributes = [e for e in all_attr if isinstance(e, int)]
@@ -24,7 +24,7 @@ def list_content_of_card(slot):
         print("Type:", PyKCS11.CKO[attrDict[PyKCS11.CKA_CLASS]], "\tLabel1:", attrDict[PyKCS11.CKA_LABEL])
     session.logout()
     session.closeSession()
-"""
+
 
 
 def get_cert_data(slot):
@@ -81,15 +81,21 @@ def validate_signature(signature, text, cert_der_data):
     except:
         return False
 
-
+def get_name_and_number(cert_data):
+    cert = x509.load_der_x509_certificate(cert_data, db())
+    name  = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
+    citizen_number = cert.subject.get_attributes_for_oid(x509.NameOID.SERIAL_NUMBER)[0].value
+    return name, citizen_number
 
 def main():
     auth_slot = pkcs11.getSlotList(tokenPresent=True)[0]
-    text = b'text to sign'
+    # text = b'text to sign'
     cert_der_data = get_cert_data(auth_slot)
-    signature = sign_message(text, auth_slot)
-    print(validate_signature(signature, text, cert_der_data))
-
+    # signature = sign_message(text, auth_slot)
+    # print(validate_signature(signature, text, cert_der_data))
+    
+    #print(get_name(auth_slot))
+    print(get_name_and_number(cert_der_data))    
 
 if __name__ == '__main__':
     lib = '/usr/lib/x86_64-linux-gnu/pkcs11/opensc-pkcs11.so'
