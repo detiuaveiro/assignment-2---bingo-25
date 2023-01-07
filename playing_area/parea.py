@@ -10,17 +10,26 @@ path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
 
 import messages.protocol as proto
+import security.security as secure
 
 CONNECTED_PLAYERS = {}                              # Dictionary holding the Connected Clients {ID: socket}
 CALLER = {}
 CURRENT_ID = 1
 NUMBER_OF_PLAYERS = 4
+PUBLIC_KEY = None
+PRIVATE_KEY = None
 
 def dispatch( srv_socket ):
+    global PRIVATE_KEY
+    global PUBLIC_KEY
+
     selector = selectors.DefaultSelector()
 
     srv_socket.setblocking( False )
     selector.register( srv_socket, selectors.EVENT_READ, data=None )
+
+    # Generate assymetric key pair for signing Messages
+    PUBLIC_KEY, PRIVATE_KEY = secure.gen_assymetric_key()
 
     while True:
         events = selector.select( timeout=None )
@@ -37,7 +46,23 @@ def dispatch( srv_socket ):
 
             # Client data is available for reading
             else:
-                msg = proto.Protocol.recv_msg( key.fileobj )
+                msg, signature = proto.Protocol.recv_msg(key.fileobj)
+
+                if signature is not None:
+                    # Verify if the signature of the message belongs to the Client that sent it
+                    sender_ID = msg.message.ID
+                    sender_pub_key = CONNECTED_PLAYERS[sender_ID]["public_key"]
+
+                    if not secure.verify_signature(msg, signature, sender_pub_key):
+                        # If the Client signature is fake
+                        if sender_ID == 0:
+                            # The game is compromised, shut PA down
+                            print('The Caller signature was forged! The game is compromised.')
+                            print('Shutting down, as the game now has no caller...')
+                            exit()
+                        else:
+                            # Disqualify Player
+                            #TODO: Mandar mensagem ao Caller para desqualificar o jogadore que forjou assinatura
 
                 if msg == None:
                     if key.fileobj in CALLER.values():
@@ -113,6 +138,7 @@ def register_new_client(msg, socket):
     global NUMBER_OF_PLAYERS
     global CURRENT_ID
 
+    #TODO: Converter CONNECTED_PLAYERS num dict de dicts e guardar Public Key do Cliente
     if msg.type == "Caller":
         if len(CALLER.keys()) > 0:
             # We already have a Caller registered in the Playing Area
@@ -120,7 +146,7 @@ def register_new_client(msg, socket):
         else:
             CALLER[0] = socket
             NUMBER_OF_PLAYERS = msg.num_players
-            reply = proto.Register_ACK(0)
+            reply = proto.Register_ACK(0, PUBLIC_KEY)
     else:
         # User do tipo Cliente
         if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS or len(CALLER.keys()) == 0:
@@ -128,7 +154,7 @@ def register_new_client(msg, socket):
             reply = proto.Register_NACK()
         else:
             CONNECTED_PLAYERS[CURRENT_ID] = socket
-            reply = proto.Register_ACK(CURRENT_ID)
+            reply = proto.Register_ACK(CURRENT_ID, PUBLIC_KEY)
             CURRENT_ID += 1
 
             # Redirect to the Caller player registration
@@ -224,7 +250,7 @@ def share_sym_keys():
         sym_keys[player] = reply.sym_key
 
     # Enviar chaves simétricas ao Caller
-    return proto.Post_Sym_Keys(sym_keys)
+    return proto.Post_Sym_Keys(None, sym_keys)
 
 
 def broadcast_to_players(msg):

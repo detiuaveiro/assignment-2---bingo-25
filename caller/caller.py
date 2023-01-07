@@ -16,23 +16,30 @@ class Caller:
     ADDRESS = '127.0.0.1'
 
     def __init__(self, nick: str, port, N = 60, players = 4):
+        # Personal Information
         self.nick = nick
         self.port = port
-        self.number_of_players = players
-        self.PLAYERS = {}
-        self.player_counter = 0
-        self.N = N                                                              # Números a considerar na geração do Playing Deck
+        self.ID = 0
 
-        self.initial_deck = []                                                  # Deck obtido pelo Caller após fazer shuffle no 1º passo de criaçã do Deck
-        self.signed_final_deck = []                                             # Deck assinado pelo Caller no final do processo de criação do Deck
-        self.playing_deck = []                                                  # Versão plaintext do Playing Deck
-        self.winner = None
-
-        self.public_key = None
+        # Generated Keys
         self.private_key = None
+        self.public_key = None
         self.sym_key = None
 
-        # Criação da Socket e do Selector
+        # Game Information
+        self.number_of_players = players
+        self.PLAYERS = {}                                                       # Information about Players
+        self.player_counter = 0                                                 # Counts already registered Players
+        self.winner = None                                                      # The determined winner
+        self.playing_area_pk = None                                             # Playing Area Public Key
+
+        # Playing Deck Information
+        self.N = N                                                              # Size of the Playing Deck
+        self.initial_deck = []                                                  # Deck after shuffling in the first step of the shuffling process
+        self.signed_final_deck = []                                             # Signed Deck at the end of the shuffling process
+        self.playing_deck = []                                                  # Plaintext version of the final Playing Deck
+
+        # Socket and Selector creation
         self.selector = selectors.DefaultSelector()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -45,8 +52,11 @@ class Caller:
         self.socket.connect( (self.ADDRESS, self.port))
         self.selector.register(self.socket, selectors.EVENT_READ, self.read_data)
 
+        # Gerar par de chaves assimétricas
+        self.generate_keys()
+
         # Envio da Register Message à Playing Area
-        message = proto.RegisterMessage("Caller", nick=self.nick, num_players=self.number_of_players)
+        message = proto.RegisterMessage("Caller", self.public_key, nick=self.nick, num_players=self.number_of_players)
         proto.Protocol.send_msg(self.socket, message)
 
         # Verificação da resposta recebida
@@ -58,10 +68,9 @@ class Caller:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
+            self.playing_area_pk = msg.pk
             print("Register Accepted")
 
-        # Se o registo foi bem sucedido, gerar par de chaves assimétricas
-        self.generate_keys()
 
     def read_data(self, socket):
         """
@@ -69,33 +78,43 @@ class Caller:
         :param socket: The calling socket
         :return:
         """
-        msg = proto.Protocol.recv_msg(socket)
+        msg, signature = proto.Protocol.recv_msg(socket)
         print(msg)
+        print(signature)
+
+        # Verify if the signature of the message belongs to the Playing Area
+        if not secure.verify_signature(msg, signature, self.playing_area_pk):
+            # If the Playing Area signature is faked, the game is compromised
+            print("The Playing Area signature was forged! The game is compromised.")
+            print("Shutting down...")
+            self.selector.unregister(socket)
+            socket.close()
+            exit()
 
         reply = None
 
         if isinstance(msg, proto.RegisterMessage):
             # REGISTER MESSAGE WITH PLAYER INFORMATION
             self.player_counter += 1
-            self.PLAYERS[self.player_counter] = {"nick": msg.nick}
+            self.PLAYERS[self.player_counter] = {"nick": msg.nick, "pk": msg.pk}
             if self.player_counter == self.number_of_players:
                 # Atingido limite de jogadores: Mandar mensagem BEGIN GAME para a Playing Area
                 print("The limit of available players has been reached. I will now start the game.")
-                reply = proto.Begin_Game()
+                reply = proto.Begin_Game(self.ID, {user_id: self.PLAYERS[user_id]["pk"] for user_id in self.PLAYERS.keys()})
                 proto.Protocol.send_msg(socket, reply)
 
                 # Gerar o deck e criar a mensagem para enviá-lo
                 reply = self.generate_deck()
         elif isinstance(msg, proto.Commit_Card):
-            self.PLAYERS[msg.id_user]["card"] = msg.card
-            self.PLAYERS[msg.id_user]["cheated"] = False
-            self.PLAYERS[msg.id_user]["deck"] = msg.deck
+            self.PLAYERS[msg.ID]["card"] = msg.card
+            self.PLAYERS[msg.ID]["cheated"] = False
+            self.PLAYERS[msg.ID]["deck"] = msg.deck
         elif isinstance(msg, proto.Message_Deck):
             # RECEIVED THE PLAYING DECK
             #TODO: Assinar o deck final
             self.signed_final_deck = msg.deck
             print("Signing the Final Deck...")
-            reply = proto.Sign_Final_Deck_ACK({user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS.keys()})
+            reply = proto.Sign_Final_Deck_ACK(self.ID, {user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS.keys()})
 
             print("Starting Playing Cards validation process...")
             self.verify_cards()
@@ -109,15 +128,21 @@ class Caller:
             for player in self.PLAYERS:
                 if self.PLAYERS[int(player)]["cheated"]:
                     print(f"Player {player} has been disqualified.")
-                    proto.Protocol.send_msg(socket, proto.Disqualify(player))
+
+                    # Create DISQUALIFY message
+                    dsq_message  = proto.Disqualify(self.ID, player)
+                    signature = secure.sign_message(dsq_message, self.private_key)
+                    new_message = proto.SignedMessage(dsq_message, signature)
+                    proto.Protocol.send_msg(socket, new_message)
+
                     self.PLAYERS.pop(player)
 
             if msg.stage == "Cards":
                 print("Verification process completed")
-                reply = proto.Cards_Validated()
+                reply = proto.Cards_Validated(self.ID)
             else:
                 print("Deck Validation completed")
-                reply = proto.Ask_For_Winner()
+                reply = proto.Ask_For_Winner(self.ID)
                 self.find_winner()
         elif isinstance(msg, proto.Post_Sym_Keys):
             # Symmetric keys of all Players in the games
@@ -130,17 +155,17 @@ class Caller:
             for player in self.PLAYERS.keys():
                 info[player] = {"deck": self.PLAYERS[int(player)]["deck"], "sym_key": self.PLAYERS[int(player)]["sym_key"]}
 
-            reply = proto.Post_Final_Decks(info, self.signed_final_deck)
+            reply = proto.Post_Final_Decks(self.ID, info, self.signed_final_deck)
 
             print("Starting Deck decryption")
             self.decrypt(info)
         elif isinstance(msg, proto.Winner):
-            if msg.id_winner != self.winner:
-                proto.Protocol.send_msg(socket, proto.Disqualify(msg.id))
-                self.PLAYERS.pop(int(msg.id))
-                print(f"Player {msg.id} has been disqualified")
+            if msg.ID_winner != self.winner:
+                proto.Protocol.send_msg(socket, proto.Disqualify(self.ID, msg.ID))
+                self.PLAYERS.pop(int(msg.ID))
+                print(f"Player {msg.ID} has been disqualified")
             else:
-                self.PLAYERS[int(msg.id)]["winner"] = True
+                self.PLAYERS[int(msg.ID)]["winner"] = True
 
             finished = True
             for player in self.PLAYERS:
@@ -150,7 +175,7 @@ class Caller:
 
             if finished:
                 print(f"The official winner is {self.winner}")
-                reply = proto.Winner_ACK(self.winner)
+                reply = proto.Winner_ACK(self.ID, self.winner)
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -158,15 +183,17 @@ class Caller:
             exit()
 
         if reply != None:
-            proto.Protocol.send_msg(socket, reply)
+            # There is a message to be sent
+            signature = secure.sign_message(reply, self.private_key)
+            new_message = proto.SignedMessage(reply, signature)
+            proto.Protocol.send_msg(socket, new_message)
 
     def generate_keys(self):
         """
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        self.private_key, self.public_key =secure.gen_assymetric_key
-        return self.private_key, self.public_key
+        self.private_key, self.public_key = secure.gen_assymetric_key
 
     def generate_deck(self):
         """
@@ -174,10 +201,11 @@ class Caller:
         """
         #TODO: Encriptar cada número
         print("Creating the Playing Deck...")
+        self.sym_key = secure.gen_symmetric_key()
         self.initial_deck = random.sample(list(range(self.N)), self.N)
 
         # Criar mensagem do tipo POST_INITIAL_DECK
-        return proto.Message_Deck(self.initial_deck)
+        return proto.Message_Deck(self.ID, self.initial_deck)
 
     def verify_cards(self):
         for player in self.PLAYERS.keys():

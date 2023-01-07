@@ -73,7 +73,7 @@ def verify_signature(message, signature, public_key):
 
 
 def gen_symmetric_key():
-    """ Generate a symetric key, using AES algorithm.
+    """ Generate a symmetric key, using AES algorithm.
 
     :return: the symetric key"""
     
