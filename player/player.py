@@ -77,10 +77,20 @@ class Player:
 
             print("Shuffling Deck...")
             suffled_deck = self.shuffle_deck(msg.deck)
-
             print("Generating Playing Card...")
-            self.generate_playing_card()
+
+            ''' implementation of one of the cheating systems'''
+            rand = random.randint(0, 100)
+            if rand>10:
+                self.generate_playing_card()
+            else:
+                self.generate_cheating_card(suffled_deck)
+
+                #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
+                proto.Protocol.send_msg(socket, proto.Cheat(id_cheater = self.id))
             reply = proto.Commit_Card(suffled_deck, self.card)
+
+
         elif isinstance(msg, proto.Verify_Cards):
             # Initiate Playing Cards verification process
             reply = self.verify_cards(msg)
@@ -140,6 +150,10 @@ class Player:
         :return:
         """
         self.card = random.sample(list(range(1, self.N + 1)), int(self.N/4))
+
+    def generate_cheating_card(self, deck):
+        '''creating a smaller deck where it consists of the first value of the deck repeated several times'''
+        self.card = random.sample(deck[0], int(self.N/8))
 
     def verify_cards(self, msg):
         cheaters = []
