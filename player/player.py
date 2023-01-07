@@ -11,7 +11,7 @@ sys.path.append(str(path_root))
 
 import messages.protocol as proto
 import security.security as secure
-
+import security.vsc_security as vsc
 
 class Player:
     ADDRESS = '127.0.0.1'
@@ -52,10 +52,13 @@ class Player:
 
         # Envio da Register Message à Playing Area
         message = proto.RegisterMessage("Player", self.public_key, nick=self.nick)
-        proto.Protocol.send_msg(self.socket, message)
+        signature = vsc.sign_message(message)
+        certificate = vsc.get_cert_data()        
+        cert_message = proto.CertMessage(message, signature, certificate)
+        proto.Protocol.send_msg(self.socket, cert_message)
 
         # Verificação da resposta recebida
-        msg = proto.Protocol.recv_msg(self.socket)
+        msg, signature = proto.Protocol.recv_msg(self.socket)
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
@@ -63,9 +66,14 @@ class Player:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
-            self.ID = msg.ID
-            self.playing_area_pk = msg.pk
-            print("Register Accepted")
+            if not secure.verify_signature(msg, signature, msg.pk):
+                # Playing Area signature is faked
+                print("The Playing Area signature was forged! The game is compromised.")
+                print("Shutting down...")
+                exit()
+            else:
+                self.playing_area_pk = msg.pk
+                print("Register Accepted")
 
     def read_data(self, socket):
         """
