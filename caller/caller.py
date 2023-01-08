@@ -31,7 +31,7 @@ class Caller:
         self.number_of_players = players
         self.PLAYERS = {}                                                       # Information about Players
         self.player_counter = 0                                                 # Counts already registered Players
-        self.winner = None                                                      # The determined winner
+        self.winners = []                                                       # The determined winners
         self.playing_area_pk = None                                             # Playing Area Public Key
 
         # Playing Deck Information
@@ -70,7 +70,7 @@ class Caller:
             exit()
         elif isinstance(msg, proto.Register_ACK):
             self.playing_area_pk = msg.pk
-            print("Register Accepted")
+            print("Register Accepted. I am now the Caller of the game.")
 
 
     def read_data(self, socket):
@@ -80,7 +80,7 @@ class Caller:
         :return:
         """
         msg, signature = proto.Protocol.recv_msg(socket)
-        print(f"Received message: {msg} Signature: {signature}")
+        #print(f"Received message: {msg} ")
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
@@ -96,9 +96,10 @@ class Caller:
 
         if isinstance(msg, proto.RegisterMessage):
             # REGISTER MESSAGE WITH PLAYER INFORMATION
-            print("Received Register Message from Player")
             self.player_counter += 1
             self.PLAYERS[self.player_counter] = {"nick": msg.nick, "pk": msg.pk}
+
+            print(f"Registered Player {self.player_counter} with nick {msg.nick}")
             if self.player_counter == self.number_of_players:
                 # Atingido limite de jogadores: Mandar mensagem BEGIN GAME para a Playing Area
                 print("The limit of available players has been reached. I will now start the game.")
@@ -122,7 +123,8 @@ class Caller:
             print("Signing the Final Deck...")
             reply = proto.Sign_Final_Deck_ACK(self.ID, {user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS.keys()})
 
-            print("Starting Playing Cards validation process...")
+            print("\nStep 2")
+            print("Starting the process of validating Playing Cards...")
             self.verify_cards()
         elif isinstance(msg, proto.Cheat_Verify):
             # Verify if another Player detected cheating
@@ -131,17 +133,14 @@ class Caller:
                     self.PLAYERS[int(player)]["cheated"] = True
 
             # If a player has cheated, disqualify them
+            cheaters = []
+
             for player in self.PLAYERS:
                 if self.PLAYERS[int(player)]["cheated"]:
-                    print(f"Player {player} has been disqualified.")
+                    cheaters.append(int(player))
 
-                    # Create DISQUALIFY message
-                    dsq_message  = proto.Disqualify(self.ID, player)
-                    signature = secure.sign_message(dsq_message, self.private_key)
-                    new_message = proto.SignedMessage(dsq_message, signature)
-                    proto.Protocol.send_msg(socket, new_message)
-
-                    self.PLAYERS.pop(player)
+            for player in cheaters:
+                self.disqualify_player(int(player))
 
             if msg.stage == "Cards":
                 print("Verification process completed")
@@ -152,7 +151,8 @@ class Caller:
                 self.find_winner()
         elif isinstance(msg, proto.Post_Sym_Keys):
             # Symmetric keys of all Players in the games
-            print("Received the symmetric keys of other Players")
+            print("\nStep 3")
+            print("Received the symmetric keys of the Players")
             for player in msg.sym_key.keys():
                 self.PLAYERS[int(player)]["sym_key"] = msg.sym_key[player]
 
@@ -163,13 +163,12 @@ class Caller:
 
             reply = proto.Post_Final_Decks(self.ID, info, self.signed_final_deck)
 
-            print("Starting Deck decryption")
+            print("I will now start to decrypt the Deck and verify if anyone cheated")
             self.decrypt(info)
         elif isinstance(msg, proto.Winner):
-            if msg.ID_winner != self.winner:
-                proto.Protocol.send_msg(socket, proto.Disqualify(self.ID, msg.ID))
-                self.PLAYERS.pop(int(msg.ID))
-                print(f"Player {msg.ID} has been disqualified")
+            if set([int(id) for id in msg.ID_winner]) != set(self.winners):
+                # The player has provided the wrong winners
+                self.disqualify_player(int(msg.ID))
             else:
                 self.PLAYERS[int(msg.ID)]["winner"] = True
 
@@ -180,11 +179,19 @@ class Caller:
                     break
 
             if finished:
-                print(f"The official winner is {self.winner}")
-                reply = proto.Winner_ACK(self.ID, self.winner)
+                print("\nThe official winners are:")
+                for person in self.winners:
+                    nick = self.PLAYERS[person]["nick"]
+                    print(f"-> Player #{person}, {nick}")
+                print("Congratulations!")
+                reply = proto.Winner_ACK(self.ID, self.winners)
         elif isinstance(msg, proto.Ask_Sym_Keys):
             sk = base64.b64encode(self.sym_key).decode()
             reply = proto.Post_Sym_Keys(self.ID, sk)
+        elif isinstance(msg, proto.Disqualify):
+            # The PA as warned the Caller that someone forged a signature
+            print(f"Player {msg.disqualified_ID} has forged a signature. They are now disqualified")
+            self.disqualify_player(int(msg.disqualified_ID))
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -208,7 +215,7 @@ class Caller:
         """
         Function that will create the set of N numbers, to be shuffled by all the Players of the game.
         """
-        #TODO: Encriptar cada número
+        print("\nStep 1")
         print("Creating the Playing Deck...")
         self.sym_key = secure.gen_symmetric_key()
         self.initial_deck = random.sample(list(range(self.N)), self.N)
@@ -227,11 +234,11 @@ class Caller:
 
     def verify_cards(self):
         for player in self.PLAYERS.keys():
-            #TODO: Verificar assinatura
-            print(f"Verifying Player {player}'s Playing Card")
+            nick = self.PLAYERS[player]["nick"]
+            print(f"Verifying Player {nick}'s Playing Card")
 
             if len(set(self.PLAYERS[player]["card"])) != int(self.N/4):
-                print(f"Player {player} has cheated!")
+                print(f"Player {nick} has cheated!")
                 self.PLAYERS[player]["cheated"] = True
 
     def decrypt(self, decks):
@@ -249,9 +256,9 @@ class Caller:
 
                 if len(dif) > 0:
                     self.PLAYERS[keys[i-1]]["cheated"] = True
-                    print(f"Player {keys[i-1]} cheated!")
+                    nick = self.PLAYERS[keys[i-1]]["nick"]
+                    print(f"Player {keys[i-1]}, {nick}, cheated!")
 
-            #TODO: Desincriptar e verificar assinatura
             new_deck = list()
             for number in decks[keys[i]]["deck"]:
                 flag = 1 if keys[i] == 0 else 0
@@ -268,19 +275,44 @@ class Caller:
         self.playing_deck = current_deck
 
     def find_winner(self):
+        print("\nStep 4")
+        print("I will now call out all the numbers, and find the winner:")
+        counter = 0
         for number in self.playing_deck:
+            counter += 1
+            print(f"#{counter}: {number}")
             for player in self.PLAYERS.keys():
                 if number in self.PLAYERS[player]["card"]:
                     self.PLAYERS[player]["card"].remove(number)
 
                 if len(self.PLAYERS[player]["card"]) == 0:
-                    self.winner = player
-                    break
+                    self.winners.append(player)
 
-            if self.winner is not None:
+            if len(self.winners) != 0:
                 break
 
-        print(f"I determined {self.winner} as a winner, baby")
+        for person in self.winners:
+            print(f"\nI determined {person} as a winner")
+
+    def disqualify_player(self, player):
+        """
+
+        """
+        nick = self.PLAYERS[player]["nick"]
+        print(f"Player #{player}, {nick}, has been disqualified.")
+
+        # Create DISQUALIFY message
+        dsq_message = proto.Disqualify(player, self.ID)
+        signature = secure.sign_message(dsq_message, self.private_key)
+        new_message = proto.SignedMessage(dsq_message, signature)
+        proto.Protocol.send_msg(self.socket, new_message)
+
+        # Eliminate info about the player
+        self.PLAYERS.pop(int(player))
+
+        # If the play is in the winners list, take them off
+        if player in self.winners:
+            self.winners.remove(player)
 
     def loop(self):
         while True:

@@ -179,7 +179,7 @@ class Cheat_Verify(Message):
         return {"command": self.command, "ID": self.ID, "cheaters": self.cheaters, "stage": self.stage}
 
 class Disqualify(Message):
-    def __init__(self, ID, disqualified_ID):
+    def __init__(self, disqualified_ID, ID=None):
         self.disqualified_ID = disqualified_ID
         super().__init__("Disqualify", ID)
 
@@ -376,7 +376,7 @@ class Protocol:
 
         if value == "Cheat":
             try:
-                msg = Register_ACK(dicionario["ID"])
+                msg = Cheat(dicionario["ID"])
             except:
                 raise BadFormatError(data)
 
@@ -430,7 +430,7 @@ class Protocol:
 
         if value == "Disqualify":
             try:
-                msg = Disqualify(dicionario["ID"], dicionario["disqualified_ID"])
+                msg = Disqualify(dicionario["disqualified_ID"], dicionario["ID"])
             except:
                 raise BadFormatError(data)
 
