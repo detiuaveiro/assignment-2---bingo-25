@@ -22,6 +22,8 @@ def test_encrypt_number():
     number = 42
     encrypted_number = encrypt_number(number, symmetric_key)
     encrypted_number_2 = encrypt_number(number, symmetric_key_2)
+    encrypted_number_3 = encrypt_number(encrypted_number, symmetric_key)
+    print(encrypted_number_3)
     decrypted_number = decrypt_number(encrypted_number, symmetric_key)
     decrypted_number_2 = decrypt_number(encrypted_number_2, symmetric_key_2)
     assert number == decrypted_number

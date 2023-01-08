@@ -1,10 +1,11 @@
 #!/bin/python
+import base64
 import selectors
 import sys
 import socket
-import json
 import random
 from pathlib import Path
+from cryptography.hazmat.primitives import serialization
 
 path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
@@ -55,7 +56,8 @@ class Player:
         proto.Protocol.send_msg(self.socket, message)
 
         # Verificação da resposta recebida
-        msg = proto.Protocol.recv_msg(self.socket)
+        msg, signature = proto.Protocol.recv_msg(self.socket)
+        print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
@@ -74,17 +76,17 @@ class Player:
         :return:
         """
         msg, signature = proto.Protocol.recv_msg(socket)
-        print(msg)
-        print(signature)
+        print(f"Received: {msg} with signature {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area
-        if not secure.verify_signature(msg, signature, self.playing_area_pk):
-            # If the Playing Area signature is faked, the game is compromised
-            print("The Playing Area signature was forged! The game is compromised.")
-            print("Shutting down...")
-            self.selector.unregister(socket)
-            socket.close()
-            exit()
+        if signature is not None:
+            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+                # If the Playing Area signature is faked, the game is compromised
+                print("The Playing Area signature was forged! The game is compromised.")
+                print("Shutting down...")
+                self.selector.unregister(socket)
+                socket.close()
+                exit()
 
         reply = None
 
@@ -111,7 +113,7 @@ class Player:
                 cheat_message = proto.Cheat(self.ID)
                 signature = secure.sign_message(cheat_message, self.private_key)
                 new_message = proto.SignedMessage(cheat_message, signature)
-                proto.Protocol.send_msg(socket, new_message )
+                proto.Protocol.send_msg(socket, new_message)
 
             reply = proto.Commit_Card(self.ID, suffled_deck, self.card)
         elif isinstance(msg, proto.Verify_Cards):
@@ -131,7 +133,8 @@ class Player:
                 self.players_info.pop(msg.disqualified_ID)
         elif isinstance(msg, proto.Ask_Sym_Keys):
             print("Sending my symmetric key...")
-            reply = proto.Post_Sym_Keys(self.ID, self.sym_key)
+            sk = base64.b64encode(self.sym_key).decode()
+            reply = proto.Post_Sym_Keys(self.ID, sk)
         elif isinstance(msg, proto.Post_Final_Decks):
             print("Starting Deck decryption process...")
             reply = self.decrypt(msg.decks, msg.signed_deck)
@@ -159,7 +162,7 @@ class Player:
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        self.private_key, self.public_key = secure.gen_assymetric_key
+        self.private_key, self.public_key = secure.gen_assymetric_key()
 
     def shuffle_deck(self, deck):
         """
@@ -168,6 +171,11 @@ class Player:
         """
         #TODO: Encrypt the numbers in the deck
         self.sym_key = secure.gen_symmetric_key()
+
+        new_deck = []
+        for number in deck:
+            new_deck.append(base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8'))
+
         return random.sample(deck, len(deck))
 
     def generate_playing_card(self):
