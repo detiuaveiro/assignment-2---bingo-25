@@ -49,10 +49,24 @@ def dispatch( srv_socket ):
 
             # Client data is available for reading
             else:
-                msg, signature = proto.Protocol.recv_msg(key.fileobj)
-                print(f"Received message: {msg} with signature: {signature}")
+                message = proto.Protocol.recv_msg( key.fileobj )
+                try:
+                    msg = message[0]
+                except:
+                    msg = None
+                
+                try:
+                    signature = message[1]
+                except:
+                    signature = None
 
-                if signature is not None:
+                try:
+                    certificate = message[2]
+                except:
+                    certificate = None
+
+                print(f"Received message: {msg} with signature: {signature}")
+                if signature is not None and certificate is None:
                     # Verify if the signature of the message belongs to the Client that sent it
                     sender_ID = msg.ID
                     if sender_ID == 0:
@@ -71,6 +85,22 @@ def dispatch( srv_socket ):
                             # Disqualify Player
                             #TODO: Mandar mensagem ao Caller para desqualificar o jogador que forjou assinatura
                             pass
+                
+                if signature is not None and certificate is not None:
+                    print("Received a certificate. Validating it...")
+                    if vsc.validate_signature(signature, msg, certificate):
+                        print("The signature is valid. The client will be registered.")
+                    # If the signature is valid, we can proceed with the registration
+                        reply = register_new_client(msg, certificate, key.fileobj)
+                        if reply is not None:
+                            print("Sending reply to client...")
+                            signature = secure.sign_message(reply, PRIVATE_KEY)
+                            new_msg = proto.SignedMessage(reply, signature)
+                            proto.Protocol.send_msg(key.fileobj, new_msg)
+                        continue
+                    else:
+                        print("The signature is not valid. The client will not be registered.")
+            
 
                 if msg == None:
                     if key.fileobj == CALLER[0]["socket"]:
@@ -97,17 +127,8 @@ def read_data(msg, socket):
     :return:
     """
     reply = None
-
-    if isinstance(msg, proto.CertMessage):
-        # REGISTER MESSAGE
-        message, signature, certificate = msg
-        if vsc.validate_signature(signature, message, certificate):
-            # If the signature is valid, we can proceed with the registration
-            reply = register_new_client(message, certificate, socket)
-        else:
-            print("The signature is not valid. The client will not be registered.")
             
-    elif isinstance(msg, proto.Begin_Game):
+    if isinstance(msg, proto.Begin_Game):
         # Fazer forward da Mensagem para todos os jogadores
         #TODO: Incluir na mensagem as chaves públicas de todos os jogadores
         print("The game will now start...")
@@ -152,16 +173,26 @@ def register_new_client(msg, certificate, socket):
     global CURRENT_ID
     global PUBLIC_KEY
     global CONNECTED_PLAYERS
+    cc_name, cc_number = vsc.get_name_and_number(certificate)
 
     #TODO: Converter CONNECTED_PLAYERS num dict de dicts e guardar Public Key do Cliente
     if msg.type == "Caller":
+        print("Received a Register Message from a Caller")
         if len(CALLER.keys()) > 0:
             # We already have a Caller registered in the Playing Area
             reply = proto.Register_NACK()
         else:
-            CALLER[0] = {"socket": socket, "public_key": msg.pk}
-            NUMBER_OF_PLAYERS = msg.num_players
-            reply = proto.Register_ACK(0, PUBLIC_KEY)
+            print("Checking if the Caller is in the whitelist...")
+            if cc_number in CALLER_WHITELIST:
+                print("Caller is in the whitelist")
+                if cc_name == CALLER_WHITELIST[cc_number]:
+                    print("Caller name is correct")
+                    CALLER[0] = {"socket": socket, "public_key": msg.pk}
+                    NUMBER_OF_PLAYERS = msg.num_players
+                    reply = proto.Register_ACK(0, PUBLIC_KEY)
+            else:
+                print("Caller is not in the whitelist")
+                reply = proto.Register_NACK()
     else:
         # User do tipo Cliente
         if len(CONNECTED_PLAYERS.keys()) > NUMBER_OF_PLAYERS or len(CALLER.keys()) == 0:

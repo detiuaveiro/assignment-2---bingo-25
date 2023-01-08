@@ -60,12 +60,13 @@ class Caller:
         # Envio da Register Message à Playing Area
         message = proto.RegisterMessage("Caller", self.public_key, nick=self.nick, num_players=self.number_of_players)
         signature = vsc.sign_message(message)
-        certificate = vsc.get_cert_data()        
+        certificate = vsc.get_cert_data()    
+
         cert_message = proto.CertMessage(message, signature, certificate)
         proto.Protocol.send_msg(self.socket, cert_message)
 
         # Verificação da resposta recebida
-        msg, signature = proto.Protocol.recv_msg(self.socket)
+        msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Caller
@@ -89,7 +90,7 @@ class Caller:
         :param socket: The calling socket
         :return:
         """
-        msg, signature = proto.Protocol.recv_msg(socket)
+        msg, signature, certificate = proto.Protocol.recv_msg(socket)
         print(f"Received message: {msg} Signature: {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area

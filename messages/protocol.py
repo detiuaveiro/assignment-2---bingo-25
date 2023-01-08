@@ -1,3 +1,4 @@
+import base64
 import json 
 from socket import socket
 
@@ -31,7 +32,8 @@ class CertMessage(SignedMessage):
         self.certificate = certificate
         super().__init__(message, signature)
     def __repr__(self):
-        return json.dumps({"message": self.message, "signature": self.signature, "certificate": self.certificate})
+        data = self.message.to_json()
+        return json.dumps({"message": data, "signature": self.signature, "certificate": self.certificate})
 
 
 #Register Messages ---------------------------------------------------
@@ -85,6 +87,9 @@ class Register_NACK(Message):
 
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 class Begin_Game(Message):
     def __init__(self, ID, pks=None):
@@ -308,6 +313,7 @@ class Protocol:
     def recv_msg(cls, src):
         """Receives through a connection a Message object."""
         isSigned = True
+        isCertified = True
         signature = None
 
         # Get the length of the message
@@ -322,7 +328,7 @@ class Protocol:
 
         # Check if message is SIgned or not
         msg = None
-
+        certificate = None
         try:
             dicionario = json.loads(data.decode('UTF-8'))
         except:
@@ -332,12 +338,18 @@ class Protocol:
             ## Message is signed
             msg = dicionario["message"]
             signature = dicionario["signature"]
+            try:
+                ## Message comes with certificate
+                certificate = dicionario["certificate"]
+            except:
+                ## Message does not come with certificate
+                isCertified = False
+
             dicionario = msg                                            # So the code below can be reused without an if
         except:
             ## Message is not signed
             isSigned = False
-
-
+        
         try:
             value = dicionario["command"]
         except:
@@ -480,7 +492,7 @@ class Protocol:
             except:
                 raise BadFormatError(data)
 
-        return msg, signature
+        return msg, signature, certificate
         
 
 class BadFormatError(Exception):
