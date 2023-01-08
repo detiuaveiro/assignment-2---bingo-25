@@ -140,9 +140,20 @@ class Player:
         """
         Function responsible for the shuffling of the Playing Deck
         :return:
+
+        Cheating can occur here:
         """
         #TODO: Encrypt the numbers in the deck
-        return random.sample(deck, len(deck))
+        self.card
+        rand = random.randint(0, 100)
+        if rand>10:
+            return random.sample(deck, len(deck))
+        else:
+            #I am cheating -> send cheating message
+            proto.Protocol.send_msg(socket, proto.Cheat(self.id))
+            return self.card + random.sample(deck, len(deck)-len(self.card))
+
+        
 
     def generate_playing_card(self):
         """
@@ -218,23 +229,31 @@ class Player:
     def find_winner(self):
         winner = None
 
-        for number in self.playing_deck:
-            if number in self.card:
-                self.card.remove(number)
+        rand = random.randint(0, 100)
+        if rand>10:
+            for number in self.playing_deck:
+                if number in self.card:
+                    self.card.remove(number)
 
-            if len(self.card) == 0:
-                winner = self.id
+                if len(self.card) == 0:
+                    winner = self.id
 
-            for player in self.players_info.keys():
-                if number in self.players_info[player]["card"]:
-                    self.players_info[player]["card"].remove(number)
+                for player in self.players_info.keys():
+                    if number in self.players_info[player]["card"]:
+                        self.players_info[player]["card"].remove(number)
 
-                if len(self.players_info[player]["card"]) == 0:
-                    winner = player
+                    if len(self.players_info[player]["card"]) == 0:
+                        winner = player
+                        break
+
+                if winner is not None:
                     break
+        else:
+            #I am the cheater -> inside 10% chance
+            print("I am cheating... inside the find winner function")
+            proto.Protocol.send_msg(socket, proto.Cheat(id_cheater = self.id))
+            winner = self.id
 
-            if winner is not None:
-                break
 
         print(f"I determined {winner} as a winner, baby")
         return proto.Winner(self.id, winner)
