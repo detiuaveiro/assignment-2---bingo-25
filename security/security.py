@@ -89,8 +89,6 @@ def gen_symmetric_key():
     """ Generate a symmetric key, using AES algorithm.
 
     :return: the symetric key"""
-    
-    # should we store the salt?
 
     salt = os.urandom(32)
     kdf = PBKDF2HMAC(
@@ -100,7 +98,6 @@ def gen_symmetric_key():
         iterations=100000,
     )
 
-    # should we store the password?
     password = secrets.token_hex(16) 
     key = kdf.derive(password.encode())
 
@@ -108,45 +105,62 @@ def gen_symmetric_key():
 
 
 def encrypt_number(number, key):
-    """ Encrypt a number using the symetric key.
+    """
+    Encrypt a number using the symetric key.
     
     :param number: the number to encrypt
     :param key: the symetric key to use
     
-    :return: the encrypted number"""
-    if isinstance(number, str):
-        number_bytes = base64.b64decode(number)
-    else:
-        number_bytes = number.to_bytes(16, byteorder='big')
+    :return: the encrypted number
+    """
+
     iv = os.urandom(16)
-    # what mode should we use?
+    if not isinstance(number, bytes):
+        number_bytes = number.to_bytes(64, byteorder='big')
+    else:
+        number_bytes = number
+    
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     encryptor = cipher.encryptor()
     ct = encryptor.update(number_bytes) + encryptor.finalize()
     return iv+ct
 
-def decrypt_number(encrypted_number, key):
-    """ Decrypt a number using the symetric key.
+def decrypt_number(encrypted_number, key, flag=0):
+    """
+    Decrypt a number using the symetric key.
     
     :param encrypted_number: the encrypted number
     :param key: the symetric key to use
+    :param flag: if 1, return the decrypted number as an integer, else return the decrypted number as bytes
     
-    :return: the decrypted number"""
-
+    :return: the decrypted number
+    """
     iv = encrypted_number[:16]
     encrypted_number = encrypted_number[16:]
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     decryptor = cipher.decryptor()
     pt = decryptor.update(encrypted_number) + decryptor.finalize()
+    if flag:
+        pt = int.from_bytes(pt, byteorder='big')
+    return pt
 
-    try:
-        return int.from_bytes(pt, byteorder='big')
-    except Exception:
-        value = base64.b64encode(pt).decode('utf-8')
-        return value 
 
 def main():
-    pass
+    # Generate two symmetric keys
+    sym_key1 = gen_symmetric_key()
+    sym_key2 = gen_symmetric_key()
+    
+    # Encrypt and decrypt the number
+    number = 42
+    encrypted_once = encrypt_number(number, sym_key1)
+    encrypted_twice = encrypt_number(encrypted_once, sym_key2)
+    decrypt_once = decrypt_number(encrypted_twice, sym_key2)
+
+    decrypt_twice = decrypt_number(decrypt_once, sym_key1, 1)
+
+    assert encrypted_once == decrypt_once
+    assert number == decrypt_twice
+
 
 if __name__ == "__main__":
     main()
