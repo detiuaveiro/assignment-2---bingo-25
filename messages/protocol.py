@@ -22,7 +22,8 @@ class SignedMessage(SuperMessage):
         super().__init__()
 
     def __repr__(self):
-        return json.dumps({"message": self.message, "signature": self.signature})
+        data = self.message.to_json()
+        return json.dumps({"message": data, "signature": self.signature})
 
 class CertMessage(SignedMessage):
     """Message accompanied by a CC signature"""
@@ -50,6 +51,12 @@ class RegisterMessage(Message):
         if self.type == "Player":
             return json.dumps({"command": self.command, "ID": self.ID, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type})
 
+    def to_json(self):
+        if self.type == "Caller":
+            return {"command": self.command, "ID": self.ID, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type, "num_players": self.num_players }
+        if self.type == "Player":
+            return {"command": self.command, "ID": self.ID, "nick": self.nick, "pk": self.pk, "ass_cc": self.ass_cc, "type": self.type}
+
 
 class Register_ACK(Message):
     def __init__(self, ID, pk):
@@ -59,11 +66,18 @@ class Register_ACK(Message):
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "pk": self.pk})
 
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "pk": self.pk}
+
 class Cheat(Message):
     def __init__(self, ID):
         super().__init__("Cheat", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 class Register_NACK(Message):
     def __init__(self):
@@ -79,7 +93,9 @@ class Begin_Game(Message):
     
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "pks": self.pks})
-    pass
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "pks": self.pks}
 
 class Message_Deck(Message):
     def __init__(self, ID, deck):
@@ -88,6 +104,9 @@ class Message_Deck(Message):
 
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "deck": self.deck})
+    
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "deck": self.deck}
 
 class Commit_Card(Message):
     def __init__(self, ID, deck, card):
@@ -98,6 +117,9 @@ class Commit_Card(Message):
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "deck": self.deck, "card": self.card})
 
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "deck": self.deck, "card": self.card}
+
 class Sign_Final_Deck_ACK(Message):
     """Message to chat with other clients."""
     def __init__(self, ID, playing_cards):
@@ -106,6 +128,9 @@ class Sign_Final_Deck_ACK(Message):
 
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "playing_cards": self.playing_cards})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "playing_cards": self.playing_cards}
 
 #Verificação das playing cards ---------------------------------------------------
 
@@ -116,19 +141,30 @@ class Verify_Cards(Message):
 
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "playing_cards": self.playing_cards})
+    
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "playing_cards": self.playing_cards}
 
 class Verify_Card_OK(Message):
     def __init__(self, ID):
         super().__init__("Verify_Card_OK", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 class Verify_Card_NOK(Message):
     def __init__(self, ID, users):
         self.users = users
         super().__init__("Verify_Card_NOK", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "users": self.users})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "users": self.users}
 
 class Cheat_Verify(Message):
     def __init__(self, cheaters, stage):
@@ -148,8 +184,12 @@ class Disqualify(Message):
 class Cards_Validated(Message):
     def __init__(self, ID):
         super().__init__("Cards_Validated", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 # Validação do playing deck ------------------------------------------------------
 
@@ -163,51 +203,79 @@ class Post_Sym_Keys(Message):
     def __init__(self, ID, sym_key):
         self.sym_key = sym_key
         super().__init__("Post_Sym_Keys", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "sym_key": self.sym_key})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "sym_key": self.sym_key}
 
 class Post_Final_Decks(Message):
     def __init__(self, ID, decks, signed_deck):
         self.decks = decks
         self.signed_deck = signed_deck
         super().__init__("Post_Final_Decks", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "decks": self.decks, "signed_deck": self.signed_deck})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "decks": self.decks, "signed_deck": self.signed_deck}
 
 class Verify_Deck_OK(Message):
     def __init__(self, ID):
         super().__init__("Verify_Deck_OK", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 class Verify_Deck_NOK(Message):
     def __init__(self, ID, users):
         super().__init__("Verify_Deck_NOK", ID)
         self.users = users
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "users": self.users})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "users": self.users}
 
 # Determinar Vencedor ------------------------------------------------------------
 
 class Ask_For_Winner(Message):
     def __init__(self, ID):
         super().__init__("Ask_For_Winner", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID})
+    
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
 
 class Winner(Message):
     def __init__(self, ID, ID_winner):
         self.ID_winner = ID_winner
         super().__init__("Winner", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "ID_winner": self.ID_winner})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "ID_winner": self.ID_winner}
 
 class Winner_ACK(Message):
     def __init__(self, ID, ID_winner):
         self.ID_winner = ID_winner
         super().__init__("Winner_ACK", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "ID_winner": self.ID_winner})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "ID_winner": self.ID_winner}
 
 class Protocol:
     # Adaptar para as mensagens raw: 
@@ -246,7 +314,7 @@ class Protocol:
         data = Protocol.exact_recv(src, 4) # 4-byte integer, network byte order (Big Endian)
 
         if data == None:
-            return None
+            return None, None
 
         # Get the actual message, based on the length
         length = int.from_bytes(data, 'big')
@@ -259,7 +327,7 @@ class Protocol:
             dicionario = json.loads(data.decode('UTF-8'))
         except:
             raise BadFormatError(data)
-
+        
         try:
             ## Message is signed
             msg = dicionario["message"]

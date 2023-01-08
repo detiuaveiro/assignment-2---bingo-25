@@ -1,10 +1,11 @@
 #!/bin/python
+import base64
 import selectors
 import sys
 import socket
-import json
 import random
 from pathlib import Path
+from cryptography.hazmat.primitives import serialization
 
 path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
@@ -89,28 +90,34 @@ class Caller:
         :return:
         """
         msg, signature = proto.Protocol.recv_msg(socket)
-        print(msg)
-        print(signature)
+        print(f"Received message: {msg} Signature: {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area
-        if not secure.verify_signature(msg, signature, self.playing_area_pk):
-            # If the Playing Area signature is faked, the game is compromised
-            print("The Playing Area signature was forged! The game is compromised.")
-            print("Shutting down...")
-            self.selector.unregister(socket)
-            socket.close()
-            exit()
+        if signature is not None:
+            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+                # If the Playing Area signature is faked, the game is compromised
+                print("The Playing Area signature was forged! The game is compromised.")
+                print("Shutting down...")
+                self.selector.unregister(socket)
+                socket.close()
+                exit()
 
         reply = None
 
         if isinstance(msg, proto.RegisterMessage):
             # REGISTER MESSAGE WITH PLAYER INFORMATION
+            print("Received Register Message from Player")
             self.player_counter += 1
             self.PLAYERS[self.player_counter] = {"nick": msg.nick, "pk": msg.pk}
             if self.player_counter == self.number_of_players:
                 # Atingido limite de jogadores: Mandar mensagem BEGIN GAME para a Playing Area
                 print("The limit of available players has been reached. I will now start the game.")
-                reply = proto.Begin_Game(self.ID, {user_id: self.PLAYERS[user_id]["pk"] for user_id in self.PLAYERS.keys()})
+
+                # Create the Begin Game Message
+                msg = proto.Begin_Game(self.ID, {user_id: self.PLAYERS[user_id]["pk"] for user_id in self.PLAYERS.keys()})
+                signature = secure.sign_message(msg, self.private_key)
+                reply = proto.SignedMessage(msg, signature)
+
                 proto.Protocol.send_msg(socket, reply)
 
                 # Gerar o deck e criar a mensagem para enviá-lo
@@ -121,7 +128,6 @@ class Caller:
             self.PLAYERS[msg.ID]["deck"] = msg.deck
         elif isinstance(msg, proto.Message_Deck):
             # RECEIVED THE PLAYING DECK
-            #TODO: Assinar o deck final
             self.signed_final_deck = msg.deck
             print("Signing the Final Deck...")
             reply = proto.Sign_Final_Deck_ACK(self.ID, {user_id: self.PLAYERS[user_id]["card"] for user_id in self.PLAYERS.keys()})
@@ -186,6 +192,9 @@ class Caller:
             if finished:
                 print(f"The official winner is {self.winner}")
                 reply = proto.Winner_ACK(self.ID, self.winner)
+        elif isinstance(msg, proto.Ask_Sym_Keys):
+            sk = base64.b64encode(self.sym_key).decode()
+            reply = proto.Post_Sym_Keys(self.ID, sk)
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -203,7 +212,7 @@ class Caller:
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        self.private_key, self.public_key = secure.gen_assymetric_key
+        self.private_key, self.public_key = secure.gen_assymetric_key()
 
     def generate_deck(self):
         """
@@ -214,8 +223,14 @@ class Caller:
         self.sym_key = secure.gen_symmetric_key()
         self.initial_deck = random.sample(list(range(self.N)), self.N)
 
+        deck = list()
+        for number in self.initial_deck:
+            encrypted_number = base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8')
+            deck.append(encrypted_number)
+
         # Criar mensagem do tipo POST_INITIAL_DECK
-        return proto.Message_Deck(self.ID, self.initial_deck)
+        return proto.Message_Deck(self.ID, deck)
+
 
     def verify_cards(self):
         for player in self.PLAYERS.keys():
@@ -236,18 +251,19 @@ class Caller:
                 # If there's a difference between the deck received in this step, and the deck determined after decryption in the previous step, the previous player cheated
                 # The only being compared is if the set of numbers in both decks are matching - order doesn't matter
                 dif = set(current_deck).difference(set(decks[keys[i]]["deck"]))
-                print(dif)
 
                 if len(dif) > 0:
                     self.PLAYERS[keys[i-1]]["cheated"] = True
                     print(f"Player {keys[i-1]} cheated!")
 
-            print(decks[keys[i]]["deck"])
-            print(decks[keys[i]]["sym_key"])
             #TODO: Desincriptar e verificar assinatura
+            new_deck = list()
+            for number in decks[keys[i]]["deck"]:
+                decrypted_number = secure.decrypt_number(base64.b64decode(number), base64.b64decode(decks[keys[i]]["sym_key"]))
+                new_deck.append(decrypted_number)
 
             # The new current_deck will be the deck resulting from the decryption of the deck signed by the current player being analysed
-            current_deck = decks[keys[i]]["deck"]           #TODO: substituir pelo deck desincreptado
+            current_deck = new_deck           #TODO: substituir pelo deck desincreptado
 
         print("Final plaintext Deck: " + str(current_deck))
 

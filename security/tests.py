@@ -17,16 +17,33 @@ def test_sign_message():
 
 
 def test_encrypt_number():
-    symmetric_key = gen_symmetric_key()
-    symmetric_key_2 = gen_symmetric_key()
+        # Generate two symmetric keys
+    sym_key1 = gen_symmetric_key()
+    sym_key2 = gen_symmetric_key()
+    sym_key3 = gen_symmetric_key()
+    sym_key4 = gen_symmetric_key()
+    sym_key5 = gen_symmetric_key()
+    
+    # Encrypt and decrypt the number
     number = 42
-    encrypted_number = encrypt_number(number, symmetric_key)
-    encrypted_number_2 = encrypt_number(number, symmetric_key_2)
-    decrypted_number = decrypt_number(encrypted_number, symmetric_key)
-    decrypted_number_2 = decrypt_number(encrypted_number_2, symmetric_key_2)
-    assert number == decrypted_number
-    assert number == decrypted_number_2
-    assert encrypted_number != encrypted_number_2
+
+    encrypted_once = encrypt_number(number, sym_key1)
+    encrypted_twice = encrypt_number(encrypted_once, sym_key2)
+    encrypted_thrice = encrypt_number(encrypted_twice, sym_key3)
+    encrypted_four_times = encrypt_number(encrypted_thrice, sym_key4)
+    encrypted_five_times = encrypt_number(encrypted_four_times, sym_key5)
+
+    decrypt_five_times = decrypt_number(encrypted_five_times, sym_key5)
+    decrypt_four_times = decrypt_number(decrypt_five_times, sym_key4)
+    decrypt_thrice = decrypt_number(decrypt_four_times, sym_key3)
+    decrypt_twice = decrypt_number(decrypt_thrice, sym_key2)
+    decrypt_once = decrypt_number(decrypt_twice, sym_key1, 1)
+
+    assert decrypt_five_times == encrypted_four_times
+    assert decrypt_four_times == encrypted_thrice
+    assert decrypt_thrice == encrypted_twice
+    assert decrypt_twice == encrypted_once
+    assert number == decrypt_once
 
 
 @click.command()
