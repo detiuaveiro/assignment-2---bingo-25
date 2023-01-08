@@ -1,10 +1,11 @@
 #!/bin/python
+import base64
 import selectors
 import sys
 import socket
-import json
 import random
 from pathlib import Path
+from cryptography.hazmat.primitives import serialization
 
 path_root = Path(__file__).parents[1]
 sys.path.append(str(path_root))
@@ -17,18 +18,26 @@ class Player:
     ADDRESS = '127.0.0.1'
 
     def __init__(self, nick: str, port):
+        # Personal Information
         self.nick = nick
-        self.N = 0                                                              # Números a considerar na geração do Playing Deck
-        self.players_info = {}                                                  # Dicionário que vai guardar info de todos os jogadores
-        self.id = None
+        self.ID = None
+        self.port = port
 
-        self.card = []
-        self.playing_deck = []                                                  # Versão plaintext do Playing Deck
+        # Generated Keys
+        self.private_key = None
+        self.public_key = None
+        self.sym_key = None
 
-        # Criação da Socket e do Selector
+        # Game Information
+        self.N = 0                                                              # Size of the Playing Deck
+        self.players_info = {}                                                  # Info about the Players
+        self.card = []                                                          # My playing card
+        self.playing_deck = []                                                  # Playing Deck in plaintext form
+        self.playing_area_pk = None                                             # Playing Area Public Key
+
+        # Socket and Selector creation
         self.selector = selectors.DefaultSelector()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.port = port
         
 
     def connect(self):
@@ -39,12 +48,16 @@ class Player:
         self.socket.connect((self.ADDRESS, self.port))
         self.selector.register(self.socket, selectors.EVENT_READ, self.read_data)
 
+        # Gerar par de chaves assimétricas
+        self.generate_keys()
+
         # Envio da Register Message à Playing Area
-        message = proto.RegisterMessage("Player", nick=self.nick)
+        message = proto.RegisterMessage("Player", self.public_key, nick=self.nick)
         proto.Protocol.send_msg(self.socket, message)
 
         # Verificação da resposta recebida
-        msg = proto.Protocol.recv_msg(self.socket)
+        msg, signature = proto.Protocol.recv_msg(self.socket)
+        print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
@@ -52,11 +65,9 @@ class Player:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
-            self.id = msg.id
+            self.ID = msg.ID
+            self.playing_area_pk = msg.pk
             print("Register Accepted")
-
-        # Se o registo foi bem sucedido, gerar par de chaves assimétricas
-        self.generate_keys()
 
     def read_data(self, socket):
         """
@@ -64,10 +75,22 @@ class Player:
         :param socket: The calling socket
         :return:
         """
-        msg = proto.Protocol.recv_msg(socket)
-        print(msg)
+        msg, signature = proto.Protocol.recv_msg(socket)
+        print(f"Received: {msg} with signature {signature}")
+
+        # Verify if the signature of the message belongs to the Playing Area
+        if signature is not None:
+            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+                # If the Playing Area signature is faked, the game is compromised
+                print("The Playing Area signature was forged! The game is compromised.")
+                print("Shutting down...")
+                self.selector.unregister(socket)
+                socket.close()
+                exit()
 
         reply = None
+
+        # Depending on the type of Message received, decide what to do
         if isinstance(msg, proto.Begin_Game):
             #TODO: Guardar as chaves públicas de todos os jogadores
             print("The game is starting...")
@@ -87,16 +110,18 @@ class Player:
                 self.generate_cheating_card(suffled_deck)
 
                 #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
-                proto.Protocol.send_msg(socket, proto.Cheat(id_cheater = self.id))
-            reply = proto.Commit_Card(suffled_deck, self.card)
+                cheat_message = proto.Cheat(self.ID)
+                signature = secure.sign_message(cheat_message, self.private_key)
+                new_message = proto.SignedMessage(cheat_message, signature)
+                proto.Protocol.send_msg(socket, new_message)
 
-
+            reply = proto.Commit_Card(self.ID, suffled_deck, self.card)
         elif isinstance(msg, proto.Verify_Cards):
             # Initiate Playing Cards verification process
             reply = self.verify_cards(msg)
         elif isinstance(msg, proto.Disqualify):
             # Someone has been disqualified
-            if msg.id_user == self.id:
+            if msg.disqualified_ID == self.ID:
                 # I have been disqualified
                 self.selector.unregister(socket)
                 socket.close()
@@ -104,21 +129,22 @@ class Player:
                 exit()
             else:
                 # Someone else was disqualified
-                print(f"Player {msg.id_user} has been disqualified.")
-                self.players_info.pop(msg.id_user)
+                print(f"Player {msg.disqualified_ID} has been disqualified.")
+                self.players_info.pop(msg.disqualified_ID)
         elif isinstance(msg, proto.Ask_Sym_Keys):
             print("Sending my symmetric key...")
-            reply = proto.Post_Sym_Keys("chave")
+            sk = base64.b64encode(self.sym_key).decode()
+            reply = proto.Post_Sym_Keys(self.ID, sk)
         elif isinstance(msg, proto.Post_Final_Decks):
             print("Starting Deck decryption process...")
             reply = self.decrypt(msg.decks, msg.signed_deck)
         elif isinstance(msg, proto.Ask_For_Winner):
             reply = self.find_winner()
         elif isinstance(msg, proto.Winner_ACK):
-            if msg.id_user == self.id:
+            if msg.ID_winner == self.ID:
                 print("Bingo! I'm a winner, baby")
             else:
-                print(f"{msg.id_user} you're a winner, baby")
+                print(f"{msg.ID_winner} you're a winner, baby")
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -126,15 +152,17 @@ class Player:
             exit()
 
         if reply is not None:
-            proto.Protocol.send_msg(socket, reply)
+            # There is a message to be sent
+            signature = secure.sign_message(reply, self.private_key)
+            new_message = proto.SignedMessage(reply, signature)
+            proto.Protocol.send_msg(socket, new_message)
 
     def generate_keys(self):
         """
         Function responsible for the generation of this User's assymetric key pair
         :return:
         """
-        self.private_key, self.public_key =secure.gen_assymetric_key
-        return self.private_key, self.public_key
+        self.private_key, self.public_key = secure.gen_assymetric_key()
 
     def shuffle_deck(self, deck):
         """
@@ -144,15 +172,18 @@ class Player:
         Cheating can occur here:
         """
         #TODO: Encrypt the numbers in the deck
-        self.card
+        self.sym_key = secure.gen_symmetric_key()
         rand = random.randint(0, 100)
         if rand>10:
+            new_deck = []
+            for number in deck:
+                new_deck.append(base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8'))
+
             return random.sample(deck, len(deck))
         else:
             #I am cheating -> send cheating message
             proto.Protocol.send_msg(socket, proto.Cheat(self.id))
             return self.card + random.sample(deck, len(deck)-len(self.card))
-
         
 
     def generate_playing_card(self):
@@ -170,7 +201,7 @@ class Player:
         cheaters = []
 
         for player in msg.playing_cards.keys():
-            if int(player) == self.id:
+            if int(player) == self.ID:
                 continue
 
             #TODO: Verificar assinatura
@@ -183,10 +214,10 @@ class Player:
             self.players_info[int(player)] = {"card": msg.playing_cards[player]}
 
         if len(cheaters) > 0:
-            return proto.Verify_Card_NOK(cheaters)
+            return proto.Verify_Card_NOK(self.ID, cheaters)
         else:
             print("Nobody has cheated")
-            return proto.Verify_Card_OK()
+            return proto.Verify_Card_OK(self.ID)
 
     def decrypt(self, decks, signed_deck):
         #TODO: Verificar assinatura do Caller no sign_deck
@@ -221,10 +252,10 @@ class Player:
         self.playing_deck = signed_deck  # TODO: Substituir pela versão comentada
 
         if len(cheaters) > 0:
-            return proto.Verify_Deck_NOK(cheaters)
+            return proto.Verify_Deck_NOK(self.ID, cheaters)
         else:
             print("Nobody has cheated")
-            return proto.Verify_Deck_OK()
+            return proto.Verify_Deck_OK(self.ID)
 
     def find_winner(self):
         winner = None
@@ -256,7 +287,7 @@ class Player:
 
 
         print(f"I determined {winner} as a winner, baby")
-        return proto.Winner(self.id, winner)
+        return proto.Winner(self.ID, winner)
 
     def loop(self):
         while True:

@@ -3,8 +3,10 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import serialization
 import os
 import secrets
+import base64
 
 def gen_assymetric_key():
     """ Generate a pair of assymetric key (private and public), using RSA algorithm.
@@ -17,6 +19,11 @@ def gen_assymetric_key():
     )
     public_key = private_key.public_key()
 
+    public_key = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode('utf-8')
+
     return private_key, public_key
 
 
@@ -27,6 +34,8 @@ def sign_message(message, private_key):
     :param private_key: the private key to use
     
     :return: the signature of the message"""
+
+    message = message.__repr__().encode('utf-8')
 
     digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
     digest.update(message)
@@ -41,7 +50,7 @@ def sign_message(message, private_key):
         hashes.SHA256()
     )
 
-    return signature
+    return signature.hex()
 
 
 def verify_signature(message, signature, public_key):
@@ -52,6 +61,10 @@ def verify_signature(message, signature, public_key):
     :param public_key: the public key to use
     
     :return: True if the signature is valid, False otherwise"""
+
+    signature = bytes.fromhex(signature)
+    message = message.__repr__().encode('utf-8')
+    public_key = serialization.load_pem_public_key(public_key.encode('utf-8'), backend=default_backend())
 
     digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
     digest.update(message)
@@ -73,11 +86,9 @@ def verify_signature(message, signature, public_key):
 
 
 def gen_symmetric_key():
-    """ Generate a symetric key, using AES algorithm.
+    """ Generate a symmetric key, using AES algorithm.
 
     :return: the symetric key"""
-    
-    # should we store the salt?
 
     salt = os.urandom(32)
     kdf = PBKDF2HMAC(
@@ -87,7 +98,6 @@ def gen_symmetric_key():
         iterations=100000,
     )
 
-    # should we store the password?
     password = secrets.token_hex(16) 
     key = kdf.derive(password.encode())
 
@@ -95,38 +105,49 @@ def gen_symmetric_key():
 
 
 def encrypt_number(number, key):
-    """ Encrypt a number using the symetric key.
+    """
+    Encrypt a number using the symetric key.
     
     :param number: the number to encrypt
     :param key: the symetric key to use
     
-    :return: the encrypted number"""
+    :return: the encrypted number
+    """
 
-    number_bytes = number.to_bytes(16, byteorder='big')
     iv = os.urandom(16)
-    # what mode should we use?
+    if not isinstance(number, bytes):
+        number_bytes = number.to_bytes(64, byteorder='big')
+    else:
+        number_bytes = number
+    
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     encryptor = cipher.encryptor()
     ct = encryptor.update(number_bytes) + encryptor.finalize()
     return iv+ct
 
-def decrypt_number(encrypted_number, key):
-    """ Decrypt a number using the symetric key.
+def decrypt_number(encrypted_number, key, flag=0):
+    """
+    Decrypt a number using the symetric key.
     
     :param encrypted_number: the encrypted number
     :param key: the symetric key to use
+    :param flag: if 1, return the decrypted number as an integer, else return the decrypted number as bytes
     
-    :return: the decrypted number"""
+    :return: the decrypted number
+    """
     iv = encrypted_number[:16]
     encrypted_number = encrypted_number[16:]
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     decryptor = cipher.decryptor()
     pt = decryptor.update(encrypted_number) + decryptor.finalize()
+    if flag:
+        pt = int.from_bytes(pt, byteorder='big')
+    return pt
 
-    return int.from_bytes(pt, byteorder='big')
 
 def main():
     pass
+
 
 if __name__ == "__main__":
     main()
