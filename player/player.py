@@ -60,7 +60,7 @@ class Player:
 
         # Verificação da resposta recebida
         msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
-        print(f"Received: {msg} with signature {signature}")
+        #print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Player
@@ -84,7 +84,7 @@ class Player:
         :return:
         """
         msg, signature, certificate = proto.Protocol.recv_msg(socket)
-        print(f"Received: {msg} with signature {signature}")
+        #print(f"Received: {msg} with signature {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
@@ -107,14 +107,15 @@ class Player:
             print("\nStep 1")
             print("I am shuffling the deck...")
             shuffled_deck = self.shuffle_deck(msg.deck)
-            print("I have generated my Playing Card...")
 
             ''' implementation of one of the cheating systems'''
             rand = random.randint(0, 100)
             if rand>10:
                 self.generate_playing_card()
+                print("I have generated my Playing Card...")
             else:
                 self.generate_cheating_card(shuffled_deck)
+                print("I have generated my Cheating Playing Card...")
 
                 #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
                 cheat_message = proto.Cheat(self.ID)

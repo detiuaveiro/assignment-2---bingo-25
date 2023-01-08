@@ -124,6 +124,7 @@ class Caller:
 
                 # Gerar o deck e criar a mensagem para enviá-lo
                 reply = self.generate_deck()
+                print("Generated the Deck")
         elif isinstance(msg, proto.Commit_Card):
             self.PLAYERS[msg.ID]["card"] = msg.card
             self.PLAYERS[msg.ID]["cheated"] = False

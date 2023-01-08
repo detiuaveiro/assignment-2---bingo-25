@@ -49,23 +49,9 @@ def dispatch( srv_socket ):
 
             # Client data is available for reading
             else:
-                message = proto.Protocol.recv_msg( key.fileobj )
-                try:
-                    msg = message[0]
-                except:
-                    msg = None
-                
-                try:
-                    signature = message[1]
-                except:
-                    signature = None
+                msg, signature, certificate = proto.Protocol.recv_msg( key.fileobj )
 
-                try:
-                    certificate = message[2]
-                except:
-                    certificate = None
-
-                print(f"Received message: {msg} with signature: {signature}")
+                #print(f"Received message: {msg} with signature: {signature}")
                 if signature is not None and certificate is None:
                     # Verify if the signature of the message belongs to the Client that sent it
                     sender_ID = msg.ID
