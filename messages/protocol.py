@@ -171,15 +171,23 @@ class Cheat_Verify(Message):
         self.cheaters = cheaters
         self.stage = stage
         super().__init__("Cheat_Verify")
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "cheaters": self.cheaters, "stage": self.stage})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "cheaters": self.cheaters, "stage": self.stage}
 
 class Disqualify(Message):
     def __init__(self, ID, disqualified_ID):
         self.disqualified_ID = disqualified_ID
         super().__init__("Disqualify", ID)
+
     def __repr__(self):
         return json.dumps({"command": self.command, "ID": self.ID, "disqualified_ID": self.disqualified_ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "disqualified_ID": self.disqualified_ID}
 
 class Cards_Validated(Message):
     def __init__(self, ID):

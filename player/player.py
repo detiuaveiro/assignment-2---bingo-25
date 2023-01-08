@@ -177,12 +177,12 @@ class Player:
         if rand>10:
             new_deck = []
             for number in deck:
-                new_deck.append(base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8'))
+                new_deck.append(base64.b64encode(secure.encrypt_number(base64.b64decode(number), self.sym_key)).decode('utf-8'))
 
-            return random.sample(deck, len(deck))
+            return random.sample(new_deck, len(deck))
         else:
             #I am cheating -> send cheating message
-            proto.Protocol.send_msg(socket, proto.Cheat(self.id))
+            proto.Protocol.send_msg(socket, proto.Cheat(self.ID))
             return self.card + random.sample(deck, len(deck)-len(self.card))
         
 
@@ -231,25 +231,27 @@ class Player:
             if i != 0:
                 # If there's a difference between the deck received in this step, and the deck determined after decryption in the previous step, the previous player cheated
                 # The only being compared is if the set of numbers in both decks are matching - order doesn't matter
-                dif = set(current_deck).difference(set(decks[keys[i]]["deck"]))
-                print(dif)
+                dif = set(current_deck).difference(set([base64.b64decode(number) for number in decks[keys[i]]["deck"]]))
 
                 if len(dif) > 0:
                     cheaters.append(keys[i-1])
                     print(f"Player {keys[i - 1]} cheated!")
 
-            print(decks[keys[i]]["deck"])
-            print(decks[keys[i]]["sym_key"])
             # TODO: Desincriptar e verificar assinatura
+            new_deck = list()
+            for number in decks[keys[i]]["deck"]:
+                flag = 1 if int(keys[i]) == 0 else 0
+                decrypted_number = secure.decrypt_number(base64.b64decode(number), base64.b64decode(decks[keys[i]]["sym_key"]), flag)
+                new_deck.append(decrypted_number)
 
             # The new current_deck will be the deck resulting from the decryption of the deck signed by the current player being analysed
-            current_deck = decks[keys[i]]["deck"]  # TODO: substituir pelo deck desincreptado
+            current_deck = new_deck
 
         print("Final plaintext Deck: " + str(current_deck))
 
         # The playing deck is the plaintext deck obtained at the end of the decryption process
         # self.playing_deck = current_deck
-        self.playing_deck = signed_deck  # TODO: Substituir pela versão comentada
+        self.playing_deck = current_deck
 
         if len(cheaters) > 0:
             return proto.Verify_Deck_NOK(self.ID, cheaters)
@@ -267,7 +269,7 @@ class Player:
                     self.card.remove(number)
 
                 if len(self.card) == 0:
-                    winner = self.id
+                    winner = self.ID
 
                 for player in self.players_info.keys():
                     if number in self.players_info[player]["card"]:
@@ -282,8 +284,8 @@ class Player:
         else:
             #I am the cheater -> inside 10% chance
             print("I am cheating... inside the find winner function")
-            proto.Protocol.send_msg(socket, proto.Cheat(id_cheater = self.id))
-            winner = self.id
+            proto.Protocol.send_msg(socket, proto.Cheat(id_cheater = self.ID))
+            winner = self.ID
 
 
         print(f"I determined {winner} as a winner, baby")

@@ -124,7 +124,7 @@ def read_data(msg, socket):
         print("Step 4: Determining the Winner")
         broadcast_to_players(msg)
     elif isinstance(msg, proto.Winner):
-        proto.Protocol.send_msg(CALLER[0], msg)
+        proto.Protocol.send_msg(CALLER[0]["socket"], msg)
     elif isinstance(msg, proto.Winner_ACK):
         broadcast_to_players(msg)
         print("The game as finished")
@@ -233,10 +233,10 @@ def verify_playing_deck(msg):
     for player in CONNECTED_PLAYERS.keys():
         # Enviar a carta ao jogador
         print(f"Sending playing deck to player {player}.")
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player], msg)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
 
         # Esperar pela resposta
-        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player])
+        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         if isinstance(reply, proto.Verify_Deck_NOK):
             for player in reply.users:

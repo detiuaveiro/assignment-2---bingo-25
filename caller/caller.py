@@ -218,6 +218,9 @@ class Caller:
             encrypted_number = base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8')
             deck.append(encrypted_number)
 
+        self.initial_deck = deck
+        self.sym_key = base64.b64encode(self.sym_key).decode('utf-8')
+
         # Criar mensagem do tipo POST_INITIAL_DECK
         return proto.Message_Deck(self.ID, deck)
 
@@ -235,12 +238,14 @@ class Caller:
         keys = sorted(decks, reverse=True)
         current_deck = list()
 
+        print(keys)
+
         # We start the decryption process by taking the Deck encrypted by the player with the highest ID, and working all the way down to the lowest ID
         for i in range(len(keys)):
             if i != 0:
                 # If there's a difference between the deck received in this step, and the deck determined after decryption in the previous step, the previous player cheated
                 # The only being compared is if the set of numbers in both decks are matching - order doesn't matter
-                dif = set(current_deck).difference(set(decks[keys[i]]["deck"]))
+                dif = set(current_deck).difference(set([base64.b64decode(number) for number in decks[keys[i]]["deck"]]))
 
                 if len(dif) > 0:
                     self.PLAYERS[keys[i-1]]["cheated"] = True
@@ -249,17 +254,18 @@ class Caller:
             #TODO: Desincriptar e verificar assinatura
             new_deck = list()
             for number in decks[keys[i]]["deck"]:
-                decrypted_number = secure.decrypt_number(base64.b64decode(number), base64.b64decode(decks[keys[i]]["sym_key"]))
+                flag = 1 if keys[i] == 0 else 0
+                decrypted_number = secure.decrypt_number(base64.b64decode(number), base64.b64decode(decks[keys[i]]["sym_key"]), flag)
                 new_deck.append(decrypted_number)
 
             # The new current_deck will be the deck resulting from the decryption of the deck signed by the current player being analysed
-            current_deck = new_deck           #TODO: substituir pelo deck desincreptado
+            current_deck = new_deck 
 
         print("Final plaintext Deck: " + str(current_deck))
 
         # The playing deck is the plaintext deck obtained at the end of the decryption process
         #self.playing_deck = current_deck
-        self.playing_deck = self.signed_final_deck          #TODO: Substituir pela versão comentada
+        self.playing_deck = current_deck
 
     def find_winner(self):
         for number in self.playing_deck:
