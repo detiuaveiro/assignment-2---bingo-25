@@ -146,20 +146,7 @@ def decrypt_number(encrypted_number, key, flag=0):
 
 
 def main():
-    # Generate two symmetric keys
-    sym_key1 = gen_symmetric_key()
-    sym_key2 = gen_symmetric_key()
-    
-    # Encrypt and decrypt the number
-    number = 42
-    encrypted_once = encrypt_number(number, sym_key1)
-    encrypted_twice = encrypt_number(encrypted_once, sym_key2)
-    decrypt_once = decrypt_number(encrypted_twice, sym_key2)
-
-    decrypt_twice = decrypt_number(decrypt_once, sym_key1, 1)
-
-    assert encrypted_once == decrypt_once
-    assert number == decrypt_twice
+    pass
 
 
 if __name__ == "__main__":
