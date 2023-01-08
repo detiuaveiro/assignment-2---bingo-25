@@ -231,7 +231,7 @@ def deck_generation(initial_deck):
 
         # Wait for the reply
         while(True):
-            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
             if isinstance(reply, proto.Commit_Card):
                 # If the player is sending a CHEAT message, ignore, else continue the process
                 break
