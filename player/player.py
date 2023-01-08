@@ -100,22 +100,21 @@ class Player:
 
         # Depending on the type of Message received, decide what to do
         if isinstance(msg, proto.Begin_Game):
-            #TODO: Guardar as chaves públicas de todos os jogadores
-            print("The game is starting...")
-            pass
+            print("\nThe game is starting...")
         elif isinstance(msg, proto.Message_Deck):
             self.N = len(msg.deck)
 
-            print("Shuffling Deck...")
-            suffled_deck = self.shuffle_deck(msg.deck)
-            print("Generating Playing Card...")
+            print("\nStep 1")
+            print("I am shuffling the deck...")
+            shuffled_deck = self.shuffle_deck(msg.deck)
+            print("I have generated my Playing Card...")
 
             ''' implementation of one of the cheating systems'''
             rand = random.randint(0, 100)
             if rand>10:
                 self.generate_playing_card()
             else:
-                self.generate_cheating_card(suffled_deck)
+                self.generate_cheating_card(shuffled_deck)
 
                 #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
                 cheat_message = proto.Cheat(self.ID)
@@ -123,13 +122,13 @@ class Player:
                 new_message = proto.SignedMessage(cheat_message, signature)
                 proto.Protocol.send_msg(socket, new_message)
 
-            reply = proto.Commit_Card(self.ID, suffled_deck, self.card)
+            reply = proto.Commit_Card(self.ID, shuffled_deck, self.card)
         elif isinstance(msg, proto.Verify_Cards):
             # Initiate Playing Cards verification process
             reply = self.verify_cards(msg)
         elif isinstance(msg, proto.Disqualify):
             # Someone has been disqualified
-            if msg.disqualified_ID == self.ID:
+            if int(msg.disqualified_ID) == int(self.ID):
                 # I have been disqualified
                 self.selector.unregister(socket)
                 socket.close()
@@ -138,21 +137,21 @@ class Player:
             else:
                 # Someone else was disqualified
                 print(f"Player {msg.disqualified_ID} has been disqualified.")
-                self.players_info.pop(msg.disqualified_ID)
+                self.players_info.pop(int(msg.disqualified_ID))
         elif isinstance(msg, proto.Ask_Sym_Keys):
             print("Sending my symmetric key...")
             sk = base64.b64encode(self.sym_key).decode()
             reply = proto.Post_Sym_Keys(self.ID, sk)
         elif isinstance(msg, proto.Post_Final_Decks):
-            print("Starting Deck decryption process...")
             reply = self.decrypt(msg.decks, msg.signed_deck)
         elif isinstance(msg, proto.Ask_For_Winner):
             reply = self.find_winner()
         elif isinstance(msg, proto.Winner_ACK):
-            if msg.ID_winner == self.ID:
-                print("Bingo! I'm a winner, baby")
+            if self.ID in [int(id) for id in msg.ID_winner]:
+                print("\nBingo! I'm the Winner!")
             else:
-                print(f"{msg.ID_winner} you're a winner, baby")
+                for person in msg.ID_winner:
+                    print(f"\nCongratulations {person} for winning the game!")
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -174,17 +173,24 @@ class Player:
 
     def shuffle_deck(self, deck):
         """
-        Function responsible for the shuffling of the Playing Deck
+        Function responsible for the shuffling of the Playing Deck.
+        Cheating can occur here.
         :return:
         """
-        #TODO: Encrypt the numbers in the deck
         self.sym_key = secure.gen_symmetric_key()
+        rand = random.randint(0, 100)
+        if rand>10:
+            new_deck = []
+            for number in deck:
+                new_deck.append(base64.b64encode(secure.encrypt_number(base64.b64decode(number), self.sym_key)).decode('utf-8'))
 
-        new_deck = []
-        for number in deck:
-            new_deck.append(base64.b64encode(secure.encrypt_number(number, self.sym_key)).decode('utf-8'))
-
-        return random.sample(deck, len(deck))
+            return random.sample(new_deck, len(deck))
+        else:
+            #I am cheating -> send cheating message
+            proto.Protocol.send_msg(self.socket, proto.Cheat(self.ID))
+            print("I have cheated when shuffling the deck.")
+            return self.card + random.sample(deck, len(deck)-len(self.card))
+        
 
     def generate_playing_card(self):
         """
@@ -195,9 +201,12 @@ class Player:
 
     def generate_cheating_card(self, deck):
         '''creating a smaller deck where it consists of the first value of the deck repeated several times'''
+        print("I have cheated while generating my playing card")
         self.card = random.sample(deck[0], int(self.N/8))
 
     def verify_cards(self, msg):
+        print("\nStep 2")
+        print("Starting the process of validating Playing Cards...")
         cheaters = []
 
         for player in msg.playing_cards.keys():
@@ -205,11 +214,13 @@ class Player:
                 continue
 
             #TODO: Verificar assinatura
-            print(f"Verifying Player {player}'s Playing Card")
+            print(f"Verifying Player {player}'s Playing Card...")
 
             if len(set(msg.playing_cards[player])) != int(self.N/4):
                 print(f"Player {player} has cheated!")
                 cheaters.append(player)
+            else:
+                print("Everything OK!")
 
             self.players_info[int(player)] = {"card": msg.playing_cards[player]}
 
@@ -220,8 +231,8 @@ class Player:
             return proto.Verify_Card_OK(self.ID)
 
     def decrypt(self, decks, signed_deck):
-        #TODO: Verificar assinatura do Caller no sign_deck
-
+        print("\nStep 3")
+        print("I will now start to decrypt the Deck and verify if anyone cheated")
         keys = sorted(decks, reverse=True)
         current_deck = list()
         cheaters = []
@@ -231,25 +242,26 @@ class Player:
             if i != 0:
                 # If there's a difference between the deck received in this step, and the deck determined after decryption in the previous step, the previous player cheated
                 # The only being compared is if the set of numbers in both decks are matching - order doesn't matter
-                dif = set(current_deck).difference(set(decks[keys[i]]["deck"]))
-                print(dif)
+                dif = set(current_deck).difference(set([base64.b64decode(number) for number in decks[keys[i]]["deck"]]))
 
-                if len(dif) > 0:
+                if len(dif) > 0 and keys[i-1 != self.ID]:
                     cheaters.append(keys[i-1])
                     print(f"Player {keys[i - 1]} cheated!")
 
-            print(decks[keys[i]]["deck"])
-            print(decks[keys[i]]["sym_key"])
-            # TODO: Desincriptar e verificar assinatura
+            new_deck = list()
+            for number in decks[keys[i]]["deck"]:
+                flag = 1 if int(keys[i]) == 0 else 0
+                decrypted_number = secure.decrypt_number(base64.b64decode(number), base64.b64decode(decks[keys[i]]["sym_key"]), flag)
+                new_deck.append(decrypted_number)
 
             # The new current_deck will be the deck resulting from the decryption of the deck signed by the current player being analysed
-            current_deck = decks[keys[i]]["deck"]  # TODO: substituir pelo deck desincreptado
+            current_deck = new_deck
 
         print("Final plaintext Deck: " + str(current_deck))
 
         # The playing deck is the plaintext deck obtained at the end of the decryption process
         # self.playing_deck = current_deck
-        self.playing_deck = signed_deck  # TODO: Substituir pela versão comentada
+        self.playing_deck = current_deck
 
         if len(cheaters) > 0:
             return proto.Verify_Deck_NOK(self.ID, cheaters)
@@ -258,28 +270,40 @@ class Player:
             return proto.Verify_Deck_OK(self.ID)
 
     def find_winner(self):
-        winner = None
+        print("\nStep 4")
+        print("\nI will now start the process of determining the winner:")
+        print("This is my Playing card: " + str(self.card))
 
-        for number in self.playing_deck:
-            if number in self.card:
-                self.card.remove(number)
+        winners = []
 
-            if len(self.card) == 0:
-                winner = self.ID
+        rand = random.randint(0, 100)
 
-            for player in self.players_info.keys():
-                if number in self.players_info[player]["card"]:
-                    self.players_info[player]["card"].remove(number)
+        if rand>5:
+            for number in self.playing_deck:
+                if number in self.card:
+                    self.card.remove(number)
 
-                if len(self.players_info[player]["card"]) == 0:
-                    winner = player
+                if len(self.card) == 0:
+                    winners.append(self.ID)
+
+                for player in self.players_info.keys():
+                    if number in self.players_info[player]["card"]:
+                        self.players_info[player]["card"].remove(number)
+
+                    if len(self.players_info[player]["card"]) == 0:
+                        winners.append(player)
+
+                if len(winners) != 0:
                     break
+        else:
+            #I am the cheater -> inside 10% chance
+            print("I am cheating... inside the find winner function")
+            proto.Protocol.send_msg(self.socket, proto.Cheat(self.ID))
+            winners.append(self.ID)
 
-            if winner is not None:
-                break
-
-        print(f"I determined {winner} as a winner, baby")
-        return proto.Winner(self.ID, winner)
+        for person in winners:
+            print(f"I determined {person} as a winner")
+        return proto.Winner(self.ID, winners)
 
     def loop(self):
         while True:
