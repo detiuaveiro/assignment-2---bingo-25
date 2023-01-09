@@ -64,6 +64,8 @@ def dispatch( srv_socket ):
                             # The game is compromised, shut PA down
                             print('The Caller signature was forged! The game is compromised.')
                             print('Shutting down, as the game now has no caller...')
+                            selector.unregister(key.fileobj)
+                            key.fileobj.close()
                             exit()
                         else:
                             # Disqualify Player
@@ -75,6 +77,8 @@ def dispatch( srv_socket ):
                         CALLER.pop(0)
                         print( 'Caller removed' )
                         print( 'Shutting down, as the game now has no caller...')
+                        selector.unregister(key.fileobj)
+                        key.fileobj.close()
                         exit()
                     else:
                         key_to_remove = next((k for k, value in CONNECTED_PLAYERS.items() if value == key.fileobj), None)

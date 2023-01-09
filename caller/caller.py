@@ -184,7 +184,7 @@ class Caller:
                     nick = self.PLAYERS[person]["nick"]
                     print(f"-> Player #{person}, {nick}")
                 print("Congratulations!")
-                reply = proto.Winner_ACK(self.ID, self.winners)
+                reply = proto.Winner_ACK(self.ID, self.winners)    
         elif isinstance(msg, proto.Ask_Sym_Keys):
             sk = base64.b64encode(self.sym_key).decode()
             reply = proto.Post_Sym_Keys(self.ID, sk)
@@ -309,7 +309,11 @@ class Caller:
 
         # Eliminate info about the player
         self.PLAYERS.pop(int(player))
-
+        if self.PLAYERS == {}: # If there are no more players in the game, end it
+            print("There are no more players in the game. I will now end it.")
+            self.selector.unregister(self.socket)
+            self.socket.close()
+            exit()
         # If the play is in the winners list, take them off
         if player in self.winners:
             self.winners.remove(player)

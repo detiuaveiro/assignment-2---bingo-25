@@ -144,6 +144,9 @@ class Player:
             else:
                 for person in msg.ID_winner:
                     print(f"\nCongratulations {person} for winning the game!")
+            self.selector.unregister(socket)
+            socket.close()
+            exit()
         else:
             self.selector.unregister(socket)
             socket.close()
