@@ -91,13 +91,17 @@ class Caller:
                 sender_pub_key = self.playing_area_pk
             else:
                 sender_pub_key = self.PLAYERS[sender_ID]["pk"]
+
             if not secure.verify_signature(msg, signature, sender_pub_key):
-                # If the Playing Area signature is faked, the game is compromised
-                print("The Playing Area signature was forged! The game is compromised.")
-                print("Shutting down...")
-                self.selector.unregister(socket)
-                socket.close()
-                exit()
+                if sender_ID is None:
+                    # If the Playing Area signature is faked, the game is compromised
+                    print("The Playing Area signature was forged! The game is compromised.")
+                    print("Shutting down...")
+                    self.selector.unregister(socket)
+                    socket.close()
+                    exit()
+                else:
+                    self.disqualify_player(sender_ID)
 
         reply = None
 
@@ -195,7 +199,10 @@ class Caller:
                 for person in self.winners:
                     nick = self.PLAYERS[person]["nick"]
                     print(f"-> Player #{person}, {nick}")
-                print("Congratulations!")
+                if (len(self.winners) > 0):
+                    print("Congratulations!")
+                else:
+                    print("There are no winners, only cheaters")
                 self.game_finished = True
                 reply = proto.Winner_ACK(self.ID, self.winners)    
         elif isinstance(msg, proto.Ask_Sym_Keys):
@@ -267,8 +274,6 @@ class Caller:
         keys = sorted(decks, reverse=True)
         current_deck = list()
 
-        print(keys)
-
         # We start the decryption process by taking the Deck encrypted by the player with the highest ID, and working all the way down to the lowest ID
         for i in range(len(keys)):
             if i != 0:
@@ -332,7 +337,7 @@ class Caller:
         # Eliminate info about the player
         self.PLAYERS.pop(int(player))
         if self.PLAYERS == {}: # If there are no more players in the game, end it
-            print("There are no more players in the game. I will now end it.")
+            print("\nThere are no more players in the game. I will now end it.")
             self.selector.unregister(self.socket)
             self.socket.close()
             exit()

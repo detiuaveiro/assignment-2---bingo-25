@@ -209,26 +209,32 @@ def deck_generation(initial_deck):
         # Send the Deck to the Player
         print(f"Sending deck to player {player}.")
         msg = proto.Message_Deck(None, current_deck)
-        singature = secure.sign_message(msg, PRIVATE_KEY)
-        new_msg = proto.SignedMessage(msg, singature)
+        signature = secure.sign_message(msg, PRIVATE_KEY)
+        new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
         # Wait for the reply
-        while(True):
+        while True:
             reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
             if isinstance(reply, proto.Commit_Card):
                 # If the player is sending a CHEAT message, ignore, else continue the process
                 break
 
-        # Sign the reply with the private key of the PA
-        proto.Protocol.send_msg(CALLER[0]["socket"], reply)
+        # Forward the Commit Card message to the Caller
+        print(
+            f"Player {player} has returned their shuffled version of the deck and their playing card. Forwarding the deck to the Caller.")
 
-        print(f"Player {player} has returned their shuffled verson of the deck and their playing card. Forwarding the deck to the Caller.")
+        new_msg = proto.SignedMessage(reply, signature)
+        proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
 
         if isinstance(reply, proto.Commit_Card):
             current_deck = reply.deck
 
-    proto.Protocol.send_msg(CALLER[0]["socket"], proto.Message_Deck(None, current_deck))
+    # Send the final deck to the Caller
+    msg = proto.Message_Deck(None, current_deck)
+    signature = secure.sign_message(msg, PRIVATE_KEY)
+    new_msg = proto.SignedMessage(msg, signature)
+    proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
 
 
 def verify_playing_cards(playing_cards):
@@ -255,9 +261,9 @@ def verify_playing_cards(playing_cards):
         if isinstance(reply, proto.Verify_Card_NOK):
             for player in reply.users:
                 print(f"Card from player {player} is invalid.")
-                verified_playing_cards[player] = False
+                verified_playing_cards[int(player)] = False
 
-        PLAYERS_INFO[player]["playing_card"] = playing_cards[str(player)]
+        PLAYERS_INFO[int(player)]["playing_card"] = playing_cards[str(player)]
     
     # Enviar a resposta ao Caller
     return proto.Cheat_Verify(verified_playing_cards, "Cards")
@@ -315,20 +321,6 @@ def broadcast_to_players(msg, signature):
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
-
-def broadcast_to_everyone(msg):
-    """
-    Broadcasts a message to all Users (Players + Caller)
-    :param msg:
-    :return:
-    """
-    signature = secure.sign_message(msg, PRIVATE_KEY)
-    new_msg = proto.SignedMessage(msg, signature)
-
-    for player in CONNECTED_PLAYERS.keys():
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
-
-    proto.Protocol.send_msg(CALLER[0], new_msg)
 
 @click.command()
 @click.option('--port', '-p', type=int, required=True, help='Port to connect to the Playing Area')
