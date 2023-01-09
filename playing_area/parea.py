@@ -438,7 +438,7 @@ def share_sym_keys():
         sym_keys[player] = reply.sym_key
 
     # Enviar chaves simétricas ao Caller
-    logging.info('Sending Post_Sym_Keys message to caller - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+    logging.info('Sending Post_Sym_Keys message to caller - %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
     NHASHED = "Sending Post_Sym_Keys message to caller"
     CONTADOR += 1
     return proto.Post_Sym_Keys(None, sym_keys)

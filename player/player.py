@@ -342,7 +342,7 @@ class Player:
             reply = proto.SignedMessage(msg, signature)
             proto.Protocol.send_msg(self.socket, reply)
         elif txt == "2":
-            f = open("../security.log", "r")
+            f = open("security.log", "r")
             content = f.read()
             print(content)
             f.close()
