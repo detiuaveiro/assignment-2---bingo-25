@@ -49,7 +49,11 @@ def dispatch( srv_socket ):
 
             # Client data is available for reading
             else:
-                msg, signature, certificate = proto.Protocol.recv_msg( key.fileobj )
+                try:
+                    msg, signature, certificate = proto.Protocol.recv_msg( key.fileobj )
+                except:
+                    msg, signature = proto.Protocol.recv_msg( key.fileobj )
+                    
 
                 #print(f"Received message: {msg} with signature: {signature}")
                 if signature is not None and certificate is None:
@@ -217,7 +221,10 @@ def deck_generation(initial_deck):
 
         # Wait for the reply
         while(True):
-            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            try:
+                reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            except:
+                reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
             if isinstance(reply, proto.Commit_Card):
                 # If the player is sending a CHEAT message, ignore, else continue the process
                 break
@@ -246,7 +253,10 @@ def verify_playing_cards(playing_cards):
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
 
         # Esperar pela resposta 
-        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        try:
+            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        except:
+            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         if isinstance(reply, proto.Verify_Card_NOK):
             for player in reply.users:
@@ -266,7 +276,10 @@ def verify_playing_deck(msg):
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
 
         # Esperar pela resposta
-        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        try:
+            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        except:
+            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         if isinstance(reply, proto.Verify_Deck_NOK):
             for player in reply.users:
@@ -284,7 +297,10 @@ def share_sym_keys():
 
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
-        reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        try:
+            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        except:
+            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         sym_keys[player] = reply.sym_key
 

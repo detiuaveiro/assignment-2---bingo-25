@@ -66,7 +66,10 @@ class Caller:
         proto.Protocol.send_msg(self.socket, cert_message)
 
         # Verificação da resposta recebida
-        msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+        try:
+            msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+        except:
+            msg, signature = proto.Protocol.recv_msg(self.socket)
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Caller
@@ -90,8 +93,11 @@ class Caller:
         :param socket: The calling socket
         :return:
         """
-        msg, signature, certificate = proto.Protocol.recv_msg(socket)
-        print(f"Received message: {msg} Signature: {signature}")
+        try:
+            msg, signature, certificate = proto.Protocol.recv_msg(socket)
+        except:
+            msg, signature = proto.Protocol.recv_msg(socket)
+        #print(f"Received message: {msg} Signature: {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:

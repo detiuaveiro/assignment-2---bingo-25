@@ -59,7 +59,10 @@ class Player:
         proto.Protocol.send_msg(self.socket, cert_message)
 
         # Verificação da resposta recebida
-        msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+        try:
+            msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+        except:
+            msg, signature = proto.Protocol.recv_msg(self.socket)
         #print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
@@ -75,6 +78,7 @@ class Player:
                 exit()
             else:
                 self.playing_area_pk = msg.pk
+                self.ID = msg.ID
                 print("Register Accepted")
 
     def read_data(self, socket):
@@ -83,7 +87,10 @@ class Player:
         :param socket: The calling socket
         :return:
         """
-        msg, signature, certificate = proto.Protocol.recv_msg(socket)
+        try:
+            msg, signature, certificate = proto.Protocol.recv_msg(socket)
+        except:
+            msg, signature = proto.Protocol.recv_msg(socket)
         #print(f"Received: {msg} with signature {signature}")
 
         # Verify if the signature of the message belongs to the Playing Area
