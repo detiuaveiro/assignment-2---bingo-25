@@ -71,7 +71,10 @@ def dispatch( srv_socket ):
                             exit()
                         else:
                             # Disqualify Player
-                            proto.Protocol.send_msg(CALLER[0]["socket"], proto.Disqualify(msg.ID))
+                            m = proto.Disqualify(msg.ID)
+                            signature = secure.sign_message(m, PRIVATE_KEY)
+                            new_msg = proto.Message(m, signature)
+                            proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
                             pass
 
                 if msg == None:
@@ -91,9 +94,9 @@ def dispatch( srv_socket ):
                     key.fileobj.close()
                     continue
 
-                read_data(msg, key.fileobj)
+                read_data(msg, signature, key.fileobj)
 
-def read_data(msg, socket):
+def read_data(msg, signature, socket):
     """
     This function will determine the class of the received Message, and call the code that should be executed when an instance of this Message is received.
     :param msg: The message received
@@ -111,15 +114,17 @@ def read_data(msg, socket):
         # Fazer forward da Mensagem para todos os jogadores
         print("Registration process is completed!\n\nTHE GAME WILL NOW START")
         print("\nStep 1. Generation of the Playing Deck and the Player Cards")
-        broadcast_to_players(msg)
+        msg.ID = None
+        signature = secure.sign_message(msg, PRIVATE_KEY)
+        broadcast_to_players(msg, signature)
     elif isinstance(msg, proto.Message_Deck):
         # Processo de shuffling do deck
         deck_generation(msg.deck)
     elif isinstance(msg, proto.Sign_Final_Deck_ACK):
         print("\nStep 2: Validating player cards")
-        verify_playing_cards(msg.playing_cards)
+        reply = verify_playing_cards(msg.playing_cards)
     elif isinstance(msg, proto.Disqualify):
-        broadcast_to_players(msg)
+        broadcast_to_players(msg, signature)
         CONNECTED_PLAYERS.pop(int(msg.disqualified_ID))
         PLAYERS_INFO[int(msg.disqualified_ID)]["disqualified"] = True
     elif isinstance(msg, proto.Cards_Validated):
@@ -128,14 +133,15 @@ def read_data(msg, socket):
         reply = share_sym_keys()
     elif isinstance(msg, proto.Post_Final_Decks):
         print("Received all decks and symmetric keys. Broadcasting to players...")
-        verify_playing_deck(msg)
+        reply = verify_playing_deck(msg, signature)
     elif isinstance(msg, proto.Ask_For_Winner):
         print("\nStep 4: Determining the Winner")
-        broadcast_to_players(msg)
+        broadcast_to_players(msg, signature)
     elif isinstance(msg, proto.Winner):
-        proto.Protocol.send_msg(CALLER[0]["socket"], msg)
+        new_msg = proto.SignedMessage(msg, signature)
+        proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
     elif isinstance(msg, proto.Winner_ACK):
-        broadcast_to_players(msg)
+        broadcast_to_players(msg, signature)
         print("\nThe game has succesfully finished!")
     elif isinstance(msg, proto.Get_Players_List):
         print("Received request for Players List")
@@ -203,7 +209,9 @@ def deck_generation(initial_deck):
         # Send the Deck to the Player
         print(f"Sending deck to player {player}.")
         msg = proto.Message_Deck(None, current_deck)
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
+        singature = secure.sign_message(msg, PRIVATE_KEY)
+        new_msg = proto.SignedMessage(msg, singature)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
         # Wait for the reply
         while(True):
@@ -228,15 +236,21 @@ def verify_playing_cards(playing_cards):
     The Playing Area will receive the Playing Cards from each Player, and will verify whether they are valid or not.
     :return:
     """
+    global PRIVATE_KEY
+
     verified_playing_cards = {user_id : True for user_id in CONNECTED_PLAYERS.keys()}
+
+    msg = proto.Verify_Cards(None, playing_cards)
+    signature = secure.sign_message(msg, PRIVATE_KEY)
+    new_msg = proto.SignedMessage(msg, signature)
+
     for player in CONNECTED_PLAYERS.keys():
         # Enviar a carta ao jogador
         print(f"Sending all Playing Cards to player {player}, and waiting for their validation")
-        msg = proto.Verify_Cards(None, playing_cards)
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
         # Esperar pela resposta 
-        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         if isinstance(reply, proto.Verify_Card_NOK):
             for player in reply.users:
@@ -246,19 +260,22 @@ def verify_playing_cards(playing_cards):
         PLAYERS_INFO[player]["playing_card"] = playing_cards[str(player)]
     
     # Enviar a resposta ao Caller
-    proto.Protocol.send_msg(CALLER[0]["socket"], proto.Cheat_Verify(verified_playing_cards, "Cards"))
+    return proto.Cheat_Verify(verified_playing_cards, "Cards")
 
 
-def verify_playing_deck(msg):
+def verify_playing_deck(msg, signature):
+    global PRIVATE_KEY
     players_cheated = {user_id: True for user_id in CONNECTED_PLAYERS.keys()}
+
+    new_msg = proto.SignedMessage(msg, signature)
 
     for player in CONNECTED_PLAYERS.keys():
         # Enviar a carta ao jogador
         print(f"Sending playing deck to player {player}.")
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
         # Esperar pela resposta
-        reply = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+        reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         if isinstance(reply, proto.Verify_Deck_NOK):
             for player in reply.users:
@@ -266,16 +283,19 @@ def verify_playing_deck(msg):
                 players_cheated[player] = False
 
     # Enviar a resposta ao Caller
-    proto.Protocol.send_msg(CALLER[0]["socket"], proto.Cheat_Verify(players_cheated, "Deck"))
+    return proto.Cheat_Verify(players_cheated, "Deck")
 
 def share_sym_keys():
+    global PRIVATE_KEY
     sym_keys = {}
 
     # Pedir a chave simétrica a todos os Players
     msg = proto.Ask_Sym_Keys()
+    signature = secure.sign_message(msg, PRIVATE_KEY)
+    new_msg = proto.SignedMessage(msg, signature)
 
     for player in CONNECTED_PLAYERS.keys():
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
+        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
         reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
 
         sym_keys[player] = reply.sym_key
@@ -284,15 +304,15 @@ def share_sym_keys():
     return proto.Post_Sym_Keys(None, sym_keys)
 
 
-def broadcast_to_players(msg):
+def broadcast_to_players(msg, signature):
     """
     Broadcasts a message to all Players
     :param msg:
     :return:
     """
+    new_msg = proto.SignedMessage(msg, signature)
+
     for player in CONNECTED_PLAYERS.keys():
-        signature = secure.sign_message(msg, PRIVATE_KEY)
-        new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
 
@@ -302,12 +322,13 @@ def broadcast_to_everyone(msg):
     :param msg:
     :return:
     """
+    signature = secure.sign_message(msg, PRIVATE_KEY)
+    new_msg = proto.SignedMessage(msg, signature)
+
     for player in CONNECTED_PLAYERS.keys():
-        signature = secure.sign_message(msg, PRIVATE_KEY)
-        new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
-    proto.Protocol.send_msg(CALLER[0], msg)
+    proto.Protocol.send_msg(CALLER[0], new_msg)
 
 @click.command()
 @click.option('--port', '-p', type=int, required=True, help='Port to connect to the Playing Area')

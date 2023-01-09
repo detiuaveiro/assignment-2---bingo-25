@@ -87,7 +87,7 @@ class Register_NACK(Message):
         return json.dumps({"command": self.command, "ID": self.ID})
 
 class Begin_Game(Message):
-    def __init__(self, ID, pks=None):
+    def __init__(self, ID, pks):
         self.pks = pks
         super().__init__("Begin_Game", ID)
     
@@ -204,8 +204,12 @@ class Cards_Validated(Message):
 class Ask_Sym_Keys(Message):
     def __init__(self):
         super().__init__("Ask_Sym_Keys")
+
     def __repr__(self):
         return json.dumps({"command": self.command})
+
+    def to_json(self):
+        return {"command": self.command}
 
 class Post_Sym_Keys(Message):
     def __init__(self, ID, sym_key):
