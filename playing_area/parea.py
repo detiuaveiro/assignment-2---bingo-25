@@ -168,16 +168,20 @@ def read_data(msg, signature, socket):
         NHASHED = "Received Sign_Final_Deck_ACk message"
         CONTADOR += 1
         print("\nStep 2: Validating player cards")
+        # Pedir chaves simétricas a todos os Utilizadors e enviar para o Caller
+        reply = share_sym_keys()
+
+        signature = secure.sign_message(reply, PRIVATE_KEY)
+        reply = proto.SignedMessage(reply, signature)
+        proto.Protocol.send_msg(socket, reply)
+
         reply = verify_playing_cards(msg.playing_cards)
     elif isinstance(msg, proto.Disqualify):
         broadcast_to_players(msg, signature, "Disqualify")
         CONNECTED_PLAYERS.pop(int(msg.disqualified_ID))
         PLAYERS_INFO[int(msg.disqualified_ID)]["disqualified"] = True
-    elif isinstance(msg, proto.Cards_Validated):
-        print("\nStep 3: Validating the Playing Deck")
-        # Pedir chaves simétricas a todos os Utilizadors e enviar para o Caller
-        reply = share_sym_keys()
     elif isinstance(msg, proto.Post_Final_Decks):
+        print("\nStep 3: Validating the Playing Deck")
         print("Received all decks and symmetric keys. Broadcasting to players...")
         logging.info('Received Post_Final_Decks message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
         NHASHED = "Received Post_Final_Decks message"
@@ -402,7 +406,7 @@ def verify_playing_deck(msg, signature):
         if isinstance(reply, proto.Verify_Deck_NOK):
             for player in reply.users:
                 print(f"Player {player} cheated!")
-                players_cheated[player] = False
+                players_cheated[int(player)] = False
 
     # Enviar a resposta ao Caller
     return proto.Cheat_Verify(players_cheated, "Deck")
