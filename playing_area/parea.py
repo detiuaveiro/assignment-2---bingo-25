@@ -138,7 +138,8 @@ def read_data(msg, signature, socket):
         print("\nStep 4: Determining the Winner")
         broadcast_to_players(msg, signature)
     elif isinstance(msg, proto.Winner):
-        proto.Protocol.send_msg(CALLER[0]["socket"], msg)
+        new_msg = proto.SignedMessage(msg, signature)
+        proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
     elif isinstance(msg, proto.Winner_ACK):
         broadcast_to_players(msg, signature)
         print("\nThe game has succesfully finished!")

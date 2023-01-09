@@ -90,7 +90,7 @@ class Caller:
             if sender_ID is None:
                 sender_pub_key = self.playing_area_pk
             else:
-                sender_pub_key = self.PLAYERS[sender_ID]["public_key"]
+                sender_pub_key = self.PLAYERS[sender_ID]["pk"]
             if not secure.verify_signature(msg, signature, sender_pub_key):
                 # If the Playing Area signature is faked, the game is compromised
                 print("The Playing Area signature was forged! The game is compromised.")
