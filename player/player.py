@@ -4,6 +4,8 @@ import selectors
 import sys
 import socket
 import random
+import os
+import fcntl
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 
@@ -34,6 +36,8 @@ class Player:
         self.card = []                                                          # My playing card
         self.playing_deck = []                                                  # Playing Deck in plaintext form
         self.playing_area_pk = None                                             # Playing Area Public Key
+        self.game_finished = False                                              # Flag to indicate if the game has finished
+        self.users = {}                                                         # Dictionary with the users' IDs and PKs
 
         # Socket and Selector creation
         self.selector = selectors.DefaultSelector()
@@ -91,13 +95,18 @@ class Player:
             msg, signature, certificate = proto.Protocol.recv_msg(socket)
         except:
             msg, signature = proto.Protocol.recv_msg(socket)
-        #print(f"Received: {msg} with signature {signature}")
+
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
-            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+            sender_ID = msg.ID
+            if sender_ID is None:
+                sender_pub_key = self.playing_area_pk
+            else:
+                sender_pub_key = self.users[sender_ID]
+            if not secure.verify_signature(msg, signature, sender_pub_key):
                 # If the Playing Area signature is faked, the game is compromised
-                print("The Playing Area signature was forged! The game is compromised.")
+                print("The Playing Area or the Caller signature was forged! The game is compromised.")
                 print("Shutting down...")
                 self.selector.unregister(socket)
                 socket.close()
@@ -108,6 +117,7 @@ class Player:
         # Depending on the type of Message received, decide what to do
         if isinstance(msg, proto.Begin_Game):
             print("\nThe game is starting...")
+            self.users = {int(k): v for k, v in msg.pks.items()}
         elif isinstance(msg, proto.Message_Deck):
             self.N = len(msg.deck)
 
@@ -124,7 +134,6 @@ class Player:
                 self.generate_cheating_card(shuffled_deck)
                 print("I have generated my Cheating Playing Card...")
 
-                #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
                 cheat_message = proto.Cheat(self.ID)
                 signature = secure.sign_message(cheat_message, self.private_key)
                 new_message = proto.SignedMessage(cheat_message, signature)
@@ -151,7 +160,7 @@ class Player:
             sk = base64.b64encode(self.sym_key).decode()
             reply = proto.Post_Sym_Keys(self.ID, sk)
         elif isinstance(msg, proto.Post_Final_Decks):
-            reply = self.decrypt(msg.decks, msg.signed_deck)
+            reply = self.decrypt(msg.decks)
         elif isinstance(msg, proto.Ask_For_Winner):
             reply = self.find_winner()
         elif isinstance(msg, proto.Winner_ACK):
@@ -160,10 +169,21 @@ class Player:
             else:
                 for person in msg.ID_winner:
                     print(f"\nCongratulations {person} for winning the game!")
+
+            self.game_finished = True
+        elif isinstance(msg, proto.Players_List):
+            print("\nThe list of players is:")
+            for player in msg.players:
+                print(f"\n-> Player #{player}")
+                print(f"   Nick: {msg.players[player]['nick']}")
+                print(f"   Playing Card: {msg.players[player]['playing_card']}")
+                print(f"   Public Key: {msg.players[player]['public_key']}")
+                if msg.players[player]["disqualified"]:
+                    print("   [DISQUALIFIED]") 
         else:
             self.selector.unregister(socket)
             socket.close()
-            print('Connection to Playing Area lost')
+            print('\nConnection to Playing Area lost, exiting...')
             exit()
 
         if reply is not None:
@@ -238,7 +258,7 @@ class Player:
             print("Nobody has cheated")
             return proto.Verify_Card_OK(self.ID)
 
-    def decrypt(self, decks, signed_deck):
+    def decrypt(self, decks):
         print("\nStep 3")
         print("I will now start to decrypt the Deck and verify if anyone cheated")
         keys = sorted(decks, reverse=True)
@@ -313,8 +333,39 @@ class Player:
             print(f"I determined {person} as a winner")
         return proto.Winner(self.ID, winners)
 
+    def got_keyboard_data(self, stdin):
+        txt = stdin.read().strip()
+
+        if txt == "1":
+            msg = proto.Get_Players_List(self.ID)
+            signature = secure.sign_message(msg, self.private_key)
+            reply = proto.SignedMessage(msg, signature)
+            proto.Protocol.send_msg(self.socket, reply)
+        elif txt == "2":
+            pass
+        elif txt == "3":
+            print("Shutting down...")
+            self.selector.unregister(self.socket)
+            self.socket.close()
+            exit()
+        else:
+            print("Invalid option") 
+
     def loop(self):
+        # set sys.stdin non-blocking
+        orig_fl = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+        fcntl.fcntl(sys.stdin, fcntl.F_SETFL, orig_fl | os.O_NONBLOCK)
+        # register events input from keyboard + socket messages
+        self.selector.register(sys.stdin, selectors.EVENT_READ, self.got_keyboard_data)
         while True:
+            if self.game_finished:
+                sys.stdout.write("\nSelect one of the next options:\n")
+                sys.stdout.write("1 - Get Players List\n")
+                sys.stdout.write("2 - Get Audit Log\n")
+                sys.stdout.write("3 - Exit\n")
+                sys.stdout.write("Option: ")
+                sys.stdout.flush()
+
             events = self.selector.select(timeout=None)
             for key, mask in events:
                 callback = key.data

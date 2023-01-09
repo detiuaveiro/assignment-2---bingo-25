@@ -92,7 +92,7 @@ class Register_NACK(Message):
         return {"command": self.command, "ID": self.ID}
 
 class Begin_Game(Message):
-    def __init__(self, ID, pks=None):
+    def __init__(self, ID, pks):
         self.pks = pks
         super().__init__("Begin_Game", ID)
     
@@ -209,8 +209,12 @@ class Cards_Validated(Message):
 class Ask_Sym_Keys(Message):
     def __init__(self):
         super().__init__("Ask_Sym_Keys")
+
     def __repr__(self):
         return json.dumps({"command": self.command})
+
+    def to_json(self):
+        return {"command": self.command}
 
 class Post_Sym_Keys(Message):
     def __init__(self, ID, sym_key):
@@ -289,6 +293,27 @@ class Winner_ACK(Message):
 
     def to_json(self):
         return {"command": self.command, "ID": self.ID, "ID_winner": self.ID_winner}
+
+class Get_Players_List(Message):
+    def __init__(self, ID):
+        super().__init__("Get_Players_List", ID)
+
+    def __repr__(self):
+        return json.dumps({"command": self.command, "ID": self.ID})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID}
+
+class Players_List(Message):
+    def __init__(self, ID, players):
+        self.players = players
+        super().__init__("Players_List", ID)
+    
+    def __repr__(self):
+        return json.dumps({"command": self.command, "ID": self.ID, "players": self.players})
+
+    def to_json(self):
+        return {"command": self.command, "ID": self.ID, "players": self.players}
 
 class Protocol:
     # Adaptar para as mensagens raw: 
@@ -499,6 +524,19 @@ class Protocol:
                 msg = Winner_ACK(dicionario["ID"], dicionario["ID_winner"])
             except:
                 raise BadFormatError(data)
+        
+        if value == "Get_Players_List":
+            try:
+                msg = Get_Players_List(dicionario["ID"])
+            except:
+                raise BadFormatError(data)
+        
+        if value == "Players_List":
+            try:
+                msg = Players_List(dicionario["ID"], dicionario["players"])
+            except:
+                raise BadFormatError(data)
+            
 
         return msg, signature, certificate
         
