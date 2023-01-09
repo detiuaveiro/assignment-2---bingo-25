@@ -37,6 +37,7 @@ class Player:
         self.playing_deck = []                                                  # Playing Deck in plaintext form
         self.playing_area_pk = None                                             # Playing Area Public Key
         self.game_finished = False                                              # Flag to indicate if the game has finished
+        self.users = {}                                                         # Dictionary with the users' IDs and PKs
 
         # Socket and Selector creation
         self.selector = selectors.DefaultSelector()
@@ -79,11 +80,15 @@ class Player:
         :return:
         """
         msg, signature = proto.Protocol.recv_msg(socket)
-        #print(f"Received: {msg}")
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
-            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+            sender_ID = msg.ID
+            if sender_ID is None:
+                sender_pub_key = self.playing_area_pk
+            else:
+                sender_pub_key = self.users[sender_ID]
+            if not secure.verify_signature(msg, signature, sender_pub_key):
                 # If the Playing Area signature is faked, the game is compromised
                 print("The Playing Area signature was forged! The game is compromised.")
                 print("Shutting down...")
@@ -93,11 +98,10 @@ class Player:
 
         reply = None
 
-       
-
         # Depending on the type of Message received, decide what to do
         if isinstance(msg, proto.Begin_Game):
             print("\nThe game is starting...")
+            self.users = {int(k): v for k, v in msg.pks.items()}
         elif isinstance(msg, proto.Message_Deck):
             self.N = len(msg.deck)
 
@@ -113,7 +117,6 @@ class Player:
             else:
                 self.generate_cheating_card(shuffled_deck)
 
-                #ADAPTAR DEPOIS AO PROTOCOLO E VARIAVEIS DEFINIDAS - TODO!!!!!!!!
                 cheat_message = proto.Cheat(self.ID)
                 signature = secure.sign_message(cheat_message, self.private_key)
                 new_message = proto.SignedMessage(cheat_message, signature)

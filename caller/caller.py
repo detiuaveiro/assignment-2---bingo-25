@@ -86,7 +86,12 @@ class Caller:
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
-            if not secure.verify_signature(msg, signature, self.playing_area_pk):
+            sender_ID = msg.ID
+            if sender_ID is None:
+                sender_pub_key = self.playing_area_pk
+            else:
+                sender_pub_key = self.PLAYERS[sender_ID]["public_key"]
+            if not secure.verify_signature(msg, signature, sender_pub_key):
                 # If the Playing Area signature is faked, the game is compromised
                 print("The Playing Area signature was forged! The game is compromised.")
                 print("Shutting down...")
@@ -107,7 +112,12 @@ class Caller:
                 print("The limit of available players has been reached. I will now start the game.")
 
                 # Create the Begin Game Message
-                msg = proto.Begin_Game(self.ID, {user_id: self.PLAYERS[user_id]["pk"] for user_id in self.PLAYERS.keys()})
+                users = {}
+                # Get caller public key
+                users[0] = self.public_key
+                # Add the other players public keys
+                users = {**users, **{user_id: self.PLAYERS[user_id]["pk"] for user_id in self.PLAYERS.keys()}}
+                msg = proto.Begin_Game(self.ID, users)
                 signature = secure.sign_message(msg, self.private_key)
                 reply = proto.SignedMessage(msg, signature)
 
