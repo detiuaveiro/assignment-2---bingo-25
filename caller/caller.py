@@ -32,6 +32,7 @@ class Caller:
         # Game Information
         self.number_of_players = players
         self.PLAYERS = {}                                                       # Information about Players
+        self.PLAYERS_SHUFFLE = {}                                               # Dictionary holding the symmetric key and shuffled deck of each Player
         self.player_counter = 0                                                 # Counts already registered Players
         self.winners = []                                                       # The determined winners
         self.playing_area_pk = None                                             # Playing Area Public Key
@@ -94,6 +95,9 @@ class Caller:
 
             if not secure.verify_signature(msg, signature, sender_pub_key):
                 if sender_ID is None:
+                    print(msg)
+                    print(signature)
+                    print(sender_pub_key)
                     # If the Playing Area signature is faked, the game is compromised
                     print("The Playing Area signature was forged! The game is compromised.")
                     print("Shutting down...")
@@ -109,6 +113,7 @@ class Caller:
             # REGISTER MESSAGE WITH PLAYER INFORMATION
             self.player_counter += 1
             self.PLAYERS[self.player_counter] = {"nick": msg.nick, "pk": msg.pk}
+            self.PLAYERS_SHUFFLE[self.player_counter] = {"deck": None, "sym_key": None}
 
             print(f"Registered Player {self.player_counter} with nick {msg.nick}")
             if self.player_counter == self.number_of_players:
@@ -132,7 +137,7 @@ class Caller:
         elif isinstance(msg, proto.Commit_Card):
             self.PLAYERS[msg.ID]["card"] = msg.card
             self.PLAYERS[msg.ID]["cheated"] = False
-            self.PLAYERS[msg.ID]["deck"] = msg.deck
+            self.PLAYERS_SHUFFLE[msg.ID]["deck"] = msg.deck
         elif isinstance(msg, proto.Message_Deck):
             # RECEIVED THE PLAYING DECK
             self.signed_final_deck = msg.deck
@@ -155,32 +160,40 @@ class Caller:
                 if self.PLAYERS[int(player)]["cheated"]:
                     cheaters.append(int(player))
 
-            for player in cheaters:
+            for player in set(cheaters):
                 self.disqualify_player(int(player))
 
             if msg.stage == "Cards":
                 print("Verification process completed")
-                reply = proto.Cards_Validated(self.ID)
+
+                # Start Deck Validation Process
+                print("\nStep 3")
+                info = {}
+                info[0] = {"deck": self.initial_deck, "sym_key": self.sym_key}
+                for player in self.PLAYERS_SHUFFLE.keys():
+                    info[player] = {"deck": self.PLAYERS_SHUFFLE[int(player)]["deck"],
+                                    "sym_key": self.PLAYERS_SHUFFLE[int(player)]["sym_key"]}
+
+                reply = proto.Post_Final_Decks(self.ID, info, self.signed_final_deck)
+
+                print("I will now start to decrypt the Deck and verify if anyone cheated")
+                self.decrypt(info)
             else:
                 print("Deck Validation completed")
+
+                if len(cheaters) > 0:
+                    print("Shuffling process was compromised. This game can no longer go on.")
+                    self.selector.unregister(socket)
+                    socket.close()
+                    print('Shutting down...')
+                    exit()
                 reply = proto.Ask_For_Winner(self.ID)
                 self.find_winner()
         elif isinstance(msg, proto.Post_Sym_Keys):
             # Symmetric keys of all Players in the games
-            print("\nStep 3")
             print("Received the symmetric keys of the Players")
             for player in msg.sym_key.keys():
-                self.PLAYERS[int(player)]["sym_key"] = msg.sym_key[player]
-
-            info = {}
-            info[0] = {"deck": self.initial_deck, "sym_key": self.sym_key}
-            for player in self.PLAYERS.keys():
-                info[player] = {"deck": self.PLAYERS[int(player)]["deck"], "sym_key": self.PLAYERS[int(player)]["sym_key"]}
-
-            reply = proto.Post_Final_Decks(self.ID, info, self.signed_final_deck)
-
-            print("I will now start to decrypt the Deck and verify if anyone cheated")
-            self.decrypt(info)
+                self.PLAYERS_SHUFFLE[int(player)]["sym_key"] = msg.sym_key[player]
         elif isinstance(msg, proto.Winner):
             if set([int(id) for id in msg.ID_winner]) != set(self.winners):
                 # The player has provided the wrong winners
@@ -281,7 +294,7 @@ class Caller:
                 # The only being compared is if the set of numbers in both decks are matching - order doesn't matter
                 dif = set(current_deck).difference(set([base64.b64decode(number) for number in decks[keys[i]]["deck"]]))
 
-                if len(dif) > 0:
+                if len(dif) > 0 and keys[i-1] in self.PLAYERS:
                     self.PLAYERS[keys[i-1]]["cheated"] = True
                     nick = self.PLAYERS[keys[i-1]]["nick"]
                     print(f"Player {keys[i-1]}, {nick}, cheated!")
@@ -341,7 +354,8 @@ class Caller:
             self.selector.unregister(self.socket)
             self.socket.close()
             exit()
-        # If the play is in the winners list, take them off
+
+        # If the player is in the winners list, take them off
         if player in self.winners:
             self.winners.remove(player)
 
