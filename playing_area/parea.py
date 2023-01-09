@@ -3,6 +3,7 @@
 import sys
 import socket
 import selectors
+from time import sleep
 import click
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
@@ -132,6 +133,9 @@ def read_data(msg, socket):
     elif isinstance(msg, proto.Winner_ACK):
         broadcast_to_players(msg)
         print("\nThe game has succesfully finished!")
+        sleep(3)
+        print("Shutting down...")
+        exit()
 
 
     if reply != None:
