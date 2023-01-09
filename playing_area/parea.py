@@ -325,7 +325,6 @@ def deck_generation(initial_deck):
 
 def verify_playing_cards(playing_cards):
     """
-    logs done -> No signature in one of the messages!!!! -> TODO
     The Playing Area will receive the Playing Cards from each Player, and will verify whether they are valid or not.
     :return:
     """
@@ -344,7 +343,7 @@ def verify_playing_cards(playing_cards):
         # Enviar a carta ao jogador
         print(f"Sending all Playing Cards to player {player}, and waiting for their validation")
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
-        logging.info('Sent Message_Deck message to player %s - %s ', player, "No signature", extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        logging.info('Sent Message_Deck message to player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
         NHASHED = "Sent Message_Deck message to player " + str(player)
         CONTADOR += 1
 
@@ -385,7 +384,7 @@ def verify_playing_deck(msg, signature):
         # Enviar a carta ao jogador
         print(f"Sending playing deck to player {player}.")
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
-        logging.info('Sent Post_Final_Decks message to player %s- %s ', player, "No signature", extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        logging.info('Sent Post_Final_Decks message to player %s- %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
         NHASHED = "Sent Post_Final_Decks message to player " + str(player)
         CONTADOR += 1
         # Esperar pela resposta
@@ -455,7 +454,7 @@ def broadcast_to_players(msg, signature, string):
     global NHASHED
 
     new_msg = proto.SignedMessage(msg, signature)
-    
+
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
         logging.info('Sent %s message to player %s - %s ', string, player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
