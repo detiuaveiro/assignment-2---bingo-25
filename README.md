@@ -65,8 +65,8 @@ To integrate the security module with the game logic we defined the following ru
 3. The first message sent to the playing area from any client should be a CertMessage which includes a RegisterMessage, the signature of the RegisterMessage using the private key of the citizen card and the certificate of the citizen card.
 4. In every message exchange there should be the following:
    - The person which creates a message should sign it.
-   - The person which recieves a message should validate its signature.
-   - The person which detects an anomaly should inform the caller which should procede with the disqualification of the person related to the anomaly.
+   - The person which receives a message should validate its signature.
+   - The person which detects an anomaly should inform the caller which should procede with the disqualification of the person related with the anomaly.
    - If the anomaly comes from the playing area or the caller the game is aborted.
 
 ## Conclusion
@@ -74,3 +74,136 @@ To integrate the security module with the game logic we defined the following ru
 &nbsp;
 
 ## How to Run
+
+- ### Requirements
+
+In order to run the game successfully there are some requirements that should be fulfilled.
+
+For linux ubuntu distribution, the instructions are:
+
+```
+sudo apt install pcscd
+```
+
+```
+sudo apt install python3-pip
+```
+
+```
+sudo apt install swig
+```
+
+```
+pip3 install --user pykcs11
+```
+
+```
+sudo apt install opensc-pkcs11
+```
+
+```
+sudo apt update
+sudo apt install autoconf automake build-essential libpcsclite-dev python3-crypto python3-pip libtool help2man
+pip3 install argparse cryptography
+```
+
+Before doing the following instructions make sure that your distribution default python is pointing to python3.
+
+```
+python --version
+```
+
+If the output is a version of python2 you must install python3 (if you haven't already installed it):
+
+```
+sudo apt update
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.8
+```
+
+Then, after having python3 in your distribution to set python3 as default python run:
+
+```
+sudo apt install python-is-python3
+```
+
+The following command should output a python3 version:
+
+```
+python --version
+```
+
+After making sure your python default is python3 run:
+
+```
+git clone https://github.com/jpbarraca/vsmartcard.git
+cd vsmartcard
+cd virtualsmartcard
+autoreconf --verbose --install
+./configure --sysconfdir=/etc
+make
+sudo make install
+```
+
+Install the python scripts dependencies:
+
+```
+pip3 install -r requirements.txt
+```
+
+- ### Running the Code
+  Assuming that already all the requirements above were fulfilled we can run the code.
+
+1. On one terminal run the following commands:
+
+   ```
+   systemctl stop pcscd
+   sudo pcscd -f -d
+   ```
+
+   _Note_: this simulates the pluging of the card reader.
+
+&nbsp;
+
+2. On another terminal in the directory **vsmartcard/virtualsmartcard/src/vpicc** run the command:
+
+   ```
+   cp path/to/assignment-2---bingo-25/cards/{client}/card.json .
+   ./vicc -t PTEID -v
+   ```
+
+   _Note_: What this command does is simulate the insertion of an actual citizen card to the card reader. **So to insert a different client card** we must kill the process and change the {client} placeholder in the cp path and run the ./vicc script again.
+
+&nbsp;
+
+3. On another terminal in the directory **assingment-2--bingo-25** run:
+
+   ```
+   python3 playing_area/parea.py -p [PLAYING AREA PORT]
+   ```
+
+&nbsp;
+
+4. On another terminal in the directory **assingment-2--bingo-25** and **with the caller card inserted** (like in the step 2), run:
+
+   ```
+   python3 caller/run_caller.py -p [PLAYING AREA PORT] -n [NICK] -N [Number of cards in Deck] --players [Number of players]
+   ```
+
+   _Note_:
+
+   - The caller whitelist can be checked in the README.md of the cards folder.
+   - N has default value of 60
+   - players has a default value of 4
+
+&nbsp;
+
+5. On another terminal in the directory **assingment-2--bingo-25** and **with the player card inserted** (like in the step 2), run:
+
+   ```
+   python3 player/run_player.py -p [PLAYING AREA PORT] -n [NICK]
+   ```
+
+_Note_: the game will only being when the number of players defined in step 4 is reached.
