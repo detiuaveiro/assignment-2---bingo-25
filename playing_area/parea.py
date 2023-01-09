@@ -159,7 +159,7 @@ def read_data(msg, signature, socket):
         print("\nStep 1. Generation of the Playing Deck and the Player Cards")
         msg.ID = None
         signature = secure.sign_message(msg, PRIVATE_KEY)
-        broadcast_to_players(msg, signature)
+        broadcast_to_players(msg, signature, "Begin_Game")
     elif isinstance(msg, proto.Message_Deck):
         # Processo de shuffling do deck
         deck_generation(msg.deck)  #logs done 
@@ -170,7 +170,7 @@ def read_data(msg, signature, socket):
         print("\nStep 2: Validating player cards")
         reply = verify_playing_cards(msg.playing_cards)
     elif isinstance(msg, proto.Disqualify):
-        broadcast_to_players(msg, signature)
+        broadcast_to_players(msg, signature, "Disqualify")
         CONNECTED_PLAYERS.pop(int(msg.disqualified_ID))
         PLAYERS_INFO[int(msg.disqualified_ID)]["disqualified"] = True
     elif isinstance(msg, proto.Cards_Validated):
@@ -185,12 +185,12 @@ def read_data(msg, signature, socket):
         reply = verify_playing_deck(msg, signature)
     elif isinstance(msg, proto.Ask_For_Winner):
         print("\nStep 4: Determining the Winner")
-        broadcast_to_players(msg, signature)
+        broadcast_to_players(msg, signature, "Ask_For_Winner")
     elif isinstance(msg, proto.Winner):
         new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
     elif isinstance(msg, proto.Winner_ACK):
-        broadcast_to_players(msg, signature)
+        broadcast_to_players(msg, signature, "Winner_ACK")
         print("\nThe game has succesfully finished!")
     elif isinstance(msg, proto.Get_Players_List):
         print("Received request for Players List")
@@ -445,7 +445,7 @@ def share_sym_keys():
     return proto.Post_Sym_Keys(None, sym_keys)
 
 
-def broadcast_to_players(msg, signature):
+def broadcast_to_players(msg, signature, string):
     """
     Broadcasts a message to all Players
     :param msg:
@@ -455,7 +455,7 @@ def broadcast_to_players(msg, signature):
     global NHASHED
 
     new_msg = proto.SignedMessage(msg, signature)
-
+    
     for player in CONNECTED_PLAYERS.keys():
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
         logging.info('Sent %s message to player %s - %s ', string, player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
