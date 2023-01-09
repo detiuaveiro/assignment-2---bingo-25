@@ -372,7 +372,10 @@ class Caller:
             reply = proto.SignedMessage(msg, signature)
             proto.Protocol.send_msg(self.socket, reply)
         elif txt == "2":
-            pass
+            f = open("../security.log", "r")
+            content = f.read()
+            print(content)
+            f.close()
         elif txt == "3":
             print("Shutting down...")
             self.selector.unregister(self.socket)
