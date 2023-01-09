@@ -92,16 +92,21 @@ def dispatch( srv_socket ):
                     print("Received a certificate. Validating it...")
                     if vsc.validate_signature(signature, msg, certificate):
                         print("The signature is valid. The client will be registered.")
-                    # If the signature is valid, we can proceed with the registration
+                        # If the signature is valid, we can proceed with the registration
                         string, reply = register_new_client(msg, certificate, key.fileobj)
                         if reply is not None:
                             print("Sending reply to client...")
                             signature = secure.sign_message(reply, PRIVATE_KEY)
                             new_msg = proto.SignedMessage(reply, signature)
                             proto.Protocol.send_msg(key.fileobj, new_msg)
-                            logging.info('Sent %s - %s ', string,  signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-                            NHASHED = "Sent " + string + " "
-                            CONTADOR += 1
+                            if msg.type == "Caller":
+                                logging.info('Sent %s to caller - %s ', string,  signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+                                NHASHED = "Sent " + string + "to caller"
+                                CONTADOR += 1
+                            else:
+                                logging.info('Sent %s to player %s - %s ', string, msg.nick, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+                                NHASHED = "Sent " + string + "to player " + msg.nick
+                                CONTADOR += 1
                         continue
                     else:
                         print("The signature is not valid. The client will not be registered.")
@@ -256,7 +261,7 @@ def deck_generation(initial_deck):
         msg = proto.Message_Deck(None, current_deck)
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], msg)
         logging.info('Sent Message_Deck message to %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-        NHASHED = "Sent Message_Deck message to " + str(player)
+        NHASHED = "Sent Message_Deck message to player " + str(player)
         CONTADOR += 1
 
         # Wait for the reply
@@ -419,8 +424,8 @@ def broadcast_to_players(msg, string):
         signature = secure.sign_message(msg, PRIVATE_KEY)
         new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
-        logging.info('Sent %s message to %s - %s ', string, player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-        NHASHED = "Sent " + string + " message to " + str(player)
+        logging.info('Sent %s message to player %s - %s ', string, player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent " + string + " message to player " + str(player)
         CONTADOR += 1
 
 
