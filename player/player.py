@@ -90,7 +90,7 @@ class Player:
                 sender_pub_key = self.users[sender_ID]
             if not secure.verify_signature(msg, signature, sender_pub_key):
                 # If the Playing Area signature is faked, the game is compromised
-                print("The Playing Area signature was forged! The game is compromised.")
+                print("The Playing Area or the Caller signature was forged! The game is compromised.")
                 print("Shutting down...")
                 self.selector.unregister(socket)
                 socket.close()
@@ -143,7 +143,7 @@ class Player:
             sk = base64.b64encode(self.sym_key).decode()
             reply = proto.Post_Sym_Keys(self.ID, sk)
         elif isinstance(msg, proto.Post_Final_Decks):
-            reply = self.decrypt(msg.decks, msg.signed_deck)
+            reply = self.decrypt(msg.decks)
         elif isinstance(msg, proto.Ask_For_Winner):
             reply = self.find_winner()
         elif isinstance(msg, proto.Winner_ACK):
@@ -241,7 +241,7 @@ class Player:
             print("Nobody has cheated")
             return proto.Verify_Card_OK(self.ID)
 
-    def decrypt(self, decks, signed_deck):
+    def decrypt(self, decks):
         print("\nStep 3")
         print("I will now start to decrypt the Deck and verify if anyone cheated")
         keys = sorted(decks, reverse=True)
