@@ -15,6 +15,7 @@ import messages.protocol as proto
 import security.security as secure
 
 CONNECTED_PLAYERS = {}                              # Dictionary holding the Connected Clients {ID: socket}
+PLAYERS_INFO = {}
 CALLER = {}
 CURRENT_ID = 1
 NUMBER_OF_PLAYERS = 4
@@ -99,6 +100,8 @@ def read_data(msg, socket):
     :param socket: The socket that sent the message
     :return:
     """
+    global PRIVATE_KEY
+
     reply = None
 
     if isinstance(msg, proto.RegisterMessage):
@@ -118,6 +121,7 @@ def read_data(msg, socket):
     elif isinstance(msg, proto.Disqualify):
         broadcast_to_players(msg)
         CONNECTED_PLAYERS.pop(int(msg.disqualified_ID))
+        PLAYERS_INFO[int(msg.disqualified_ID)]["disqualified"] = True
     elif isinstance(msg, proto.Cards_Validated):
         print("\nStep 3: Validating the Playing Deck")
         # Pedir chaves simétricas a todos os Utilizadors e enviar para o Caller
@@ -133,12 +137,14 @@ def read_data(msg, socket):
     elif isinstance(msg, proto.Winner_ACK):
         broadcast_to_players(msg)
         print("\nThe game has succesfully finished!")
-        sleep(3)
-        print("Shutting down...")
-        exit()
+    elif isinstance(msg, proto.Get_Players_List):
+        print("Received request for Players List")
+        reply = proto.Players_List(None, PLAYERS_INFO)
 
 
     if reply != None:
+        signature = secure.sign_message(reply, PRIVATE_KEY)
+        reply = proto.SignedMessage(reply, signature)
         proto.Protocol.send_msg(socket, reply)
 
 
@@ -153,7 +159,6 @@ def register_new_client(msg, socket):
     global NUMBER_OF_PLAYERS
     global CURRENT_ID
     global PUBLIC_KEY
-    global CONNECTED_PLAYERS
 
     if msg.type == "Caller":
         if len(CALLER.keys()) > 0:
@@ -171,6 +176,7 @@ def register_new_client(msg, socket):
             reply = proto.Register_NACK()
         else:
             CONNECTED_PLAYERS[CURRENT_ID] = {"socket": socket, "public_key": msg.pk}
+            PLAYERS_INFO[CURRENT_ID] = {"nick": msg.nick, "disqualified": False, "playing_card": None, "public_key": msg.pk}
             reply = proto.Register_ACK(CURRENT_ID, PUBLIC_KEY)
             CURRENT_ID += 1
 
@@ -236,6 +242,8 @@ def verify_playing_cards(playing_cards):
             for player in reply.users:
                 print(f"Card from player {player} is invalid.")
                 verified_playing_cards[player] = False
+
+        PLAYERS_INFO[player]["playing_card"] = playing_cards[str(player)]
     
     # Enviar a resposta ao Caller
     proto.Protocol.send_msg(CALLER[0]["socket"], proto.Cheat_Verify(verified_playing_cards, "Cards"))

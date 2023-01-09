@@ -4,6 +4,8 @@ import selectors
 import sys
 import socket
 import random
+import fcntl
+import os
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 
@@ -33,6 +35,7 @@ class Caller:
         self.player_counter = 0                                                 # Counts already registered Players
         self.winners = []                                                       # The determined winners
         self.playing_area_pk = None                                             # Playing Area Public Key
+        self.game_finished = False                                              # Flag to determine if the game has finished
 
         # Playing Deck Information
         self.N = N                                                              # Size of the Playing Deck
@@ -80,7 +83,6 @@ class Caller:
         :return:
         """
         msg, signature = proto.Protocol.recv_msg(socket)
-        #print(f"Received message: {msg} ")
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
@@ -184,6 +186,7 @@ class Caller:
                     nick = self.PLAYERS[person]["nick"]
                     print(f"-> Player #{person}, {nick}")
                 print("Congratulations!")
+                self.game_finished = True
                 reply = proto.Winner_ACK(self.ID, self.winners)    
         elif isinstance(msg, proto.Ask_Sym_Keys):
             sk = base64.b64encode(self.sym_key).decode()
@@ -192,6 +195,15 @@ class Caller:
             # The PA as warned the Caller that someone forged a signature
             print(f"Player {msg.disqualified_ID} has forged a signature. They are now disqualified")
             self.disqualify_player(int(msg.disqualified_ID))
+        elif isinstance(msg, proto.Players_List):
+            print("\nThe list of players is:")
+            for player in msg.players:
+                print(f"\n-> Player #{player}")
+                print(f"   Nick: {msg.players[player]['nick']}")
+                print(f"   Playing Card: {msg.players[player]['playing_card']}")
+                print(f"   Public Key: {msg.players[player]['public_key']}")
+                if msg.players[player]["disqualified"]:
+                    print("   [DISQUALIFIED]")
         else:
             self.selector.unregister(socket)
             socket.close()
@@ -318,8 +330,41 @@ class Caller:
         if player in self.winners:
             self.winners.remove(player)
 
+    def got_keyboard_data(self, stdin):
+        txt = stdin.read()
+
+        match (txt.strip()):
+            case "1":
+                msg = proto.Get_Players_List(self.ID)
+                signature = secure.sign_message(msg, self.private_key)
+                reply = proto.SignedMessage(msg, signature)
+                proto.Protocol.send_msg(self.socket, reply)
+            case "2":
+                pass
+            case "3":
+                print("Shutting down...")
+                self.selector.unregister(self.socket)
+                self.socket.close()
+                exit()
+            case _:
+                print("Invalid option") 
+            
+
     def loop(self):
+        # set sys.stdin non-blocking
+        orig_fl = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+        fcntl.fcntl(sys.stdin, fcntl.F_SETFL, orig_fl | os.O_NONBLOCK)
+        # register events input from keyboard + socket messages
+        self.selector.register(sys.stdin, selectors.EVENT_READ, self.got_keyboard_data)
         while True:
+            if self.game_finished:
+                sys.stdout.write("\nSelect one of the next options:\n")
+                sys.stdout.write("1 - Get Players List\n")
+                sys.stdout.write("2 - Get Audit Log\n")
+                sys.stdout.write("3 - Exit\n")
+                sys.stdout.write("Option: ")
+                sys.stdout.flush()
+
             events = self.selector.select(timeout=None)
             for key, mask in events:
                 callback = key.data

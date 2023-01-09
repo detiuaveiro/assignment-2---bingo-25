@@ -4,6 +4,8 @@ import selectors
 import sys
 import socket
 import random
+import os
+import fcntl
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 
@@ -34,6 +36,7 @@ class Player:
         self.card = []                                                          # My playing card
         self.playing_deck = []                                                  # Playing Deck in plaintext form
         self.playing_area_pk = None                                             # Playing Area Public Key
+        self.game_finished = False                                              # Flag to indicate if the game has finished
 
         # Socket and Selector creation
         self.selector = selectors.DefaultSelector()
@@ -90,6 +93,8 @@ class Player:
 
         reply = None
 
+       
+
         # Depending on the type of Message received, decide what to do
         if isinstance(msg, proto.Begin_Game):
             print("\nThe game is starting...")
@@ -144,13 +149,21 @@ class Player:
             else:
                 for person in msg.ID_winner:
                     print(f"\nCongratulations {person} for winning the game!")
-            self.selector.unregister(socket)
-            socket.close()
-            exit()
+
+            self.game_finished = True
+        elif isinstance(msg, proto.Players_List):
+            print("\nThe list of players is:")
+            for player in msg.players:
+                print(f"\n-> Player #{player}")
+                print(f"   Nick: {msg.players[player]['nick']}")
+                print(f"   Playing Card: {msg.players[player]['playing_card']}")
+                print(f"   Public Key: {msg.players[player]['public_key']}")
+                if msg.players[player]["disqualified"]:
+                    print("   [DISQUALIFIED]") 
         else:
             self.selector.unregister(socket)
             socket.close()
-            print('Connection to Playing Area lost')
+            print('\nConnection to Playing Area lost, exiting...')
             exit()
 
         if reply is not None:
@@ -300,8 +313,40 @@ class Player:
             print(f"I determined {person} as a winner")
         return proto.Winner(self.ID, winners)
 
+    def got_keyboard_data(self, stdin):
+        txt = stdin.read()
+
+        match (txt.strip()):
+            case "1":
+                msg = proto.Get_Players_List(self.ID)
+                signature = secure.sign_message(msg, self.private_key)
+                reply = proto.SignedMessage(msg, signature)
+                proto.Protocol.send_msg(self.socket, reply)
+            case "2":
+                pass
+            case "3":
+                print("Shutting down...")
+                self.selector.unregister(self.socket)
+                self.socket.close()
+                exit()
+            case _:
+                print("Invalid option") 
+
     def loop(self):
+        # set sys.stdin non-blocking
+        orig_fl = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+        fcntl.fcntl(sys.stdin, fcntl.F_SETFL, orig_fl | os.O_NONBLOCK)
+        # register events input from keyboard + socket messages
+        self.selector.register(sys.stdin, selectors.EVENT_READ, self.got_keyboard_data)
         while True:
+            if self.game_finished:
+                sys.stdout.write("\nSelect one of the next options:\n")
+                sys.stdout.write("1 - Get Players List\n")
+                sys.stdout.write("2 - Get Audit Log\n")
+                sys.stdout.write("3 - Exit\n")
+                sys.stdout.write("Option: ")
+                sys.stdout.flush()
+
             events = self.selector.select(timeout=None)
             for key, mask in events:
                 callback = key.data
