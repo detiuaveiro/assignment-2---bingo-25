@@ -14,7 +14,7 @@ sys.path.append(str(path_root))
 
 import messages.protocol as proto
 import security.security as secure
-
+import security.vsc_security as vsc
 
 class Player:
     ADDRESS = '127.0.0.1'
@@ -57,10 +57,21 @@ class Player:
 
         # Envio da Register Message à Playing Area
         message = proto.RegisterMessage("Player", self.public_key, nick=self.nick)
-        proto.Protocol.send_msg(self.socket, message)
+        signature = vsc.sign_message(message)
+        certificate = vsc.get_cert_data()        
+        cert_message = proto.CertMessage(message, signature, certificate)
+        proto.Protocol.send_msg(self.socket, cert_message)
 
         # Verificação da resposta recebida
-        msg, signature = proto.Protocol.recv_msg(self.socket)
+        try:
+            message = (None, None)
+            message = proto.Protocol.recv_msg(self.socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
+        except:
+            msg, signature = message
+            certificate = None
         #print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
@@ -69,8 +80,8 @@ class Player:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
-            self.ID = int(msg.ID)
             self.playing_area_pk = msg.pk
+            self.ID = msg.ID
             print("Register Accepted")
 
     def read_data(self, socket):
@@ -79,7 +90,16 @@ class Player:
         :param socket: The calling socket
         :return:
         """
-        msg, signature = proto.Protocol.recv_msg(socket)
+        try:
+            message = (None, None)
+            message = proto.Protocol.recv_msg(socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
+        except:
+            msg, signature = message
+            certificate = None
+
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
@@ -108,14 +128,15 @@ class Player:
             print("\nStep 1")
             print("I am shuffling the deck...")
             shuffled_deck = self.shuffle_deck(msg.deck)
-            print("I have generated my Playing Card...")
 
             ''' implementation of one of the cheating systems'''
             rand = random.randint(0, 100)
             if rand>10:
                 self.generate_playing_card()
+                print("I have generated my Playing Card...")
             else:
                 self.generate_cheating_card(shuffled_deck)
+                print("I have generated my Cheating Playing Card...")
 
                 cheat_message = proto.Cheat(self.ID)
                 signature = secure.sign_message(cheat_message, self.private_key)
@@ -190,7 +211,7 @@ class Player:
         """
         self.sym_key = secure.gen_symmetric_key()
         rand = random.randint(0, 100)
-        if rand>10:
+        if rand>5:
             new_deck = []
             for number in deck:
                 new_deck.append(base64.b64encode(secure.encrypt_number(base64.b64decode(number), self.sym_key)).decode('utf-8'))
@@ -319,23 +340,25 @@ class Player:
         return proto.Winner(self.ID, winners)
 
     def got_keyboard_data(self, stdin):
-        txt = stdin.read()
+        txt = stdin.read().strip()
 
-        match (txt.strip()):
-            case "1":
-                msg = proto.Get_Players_List(self.ID)
-                signature = secure.sign_message(msg, self.private_key)
-                reply = proto.SignedMessage(msg, signature)
-                proto.Protocol.send_msg(self.socket, reply)
-            case "2":
-                pass
-            case "3":
-                print("Shutting down...")
-                self.selector.unregister(self.socket)
-                self.socket.close()
-                exit()
-            case _:
-                print("Invalid option") 
+        if txt == "1":
+            msg = proto.Get_Players_List(self.ID)
+            signature = secure.sign_message(msg, self.private_key)
+            reply = proto.SignedMessage(msg, signature)
+            proto.Protocol.send_msg(self.socket, reply)
+        elif txt == "2":
+            f = open("security.log", "r")
+            content = f.read()
+            print(content)
+            f.close()
+        elif txt == "3":
+            print("Shutting down...")
+            self.selector.unregister(self.socket)
+            self.socket.close()
+            exit()
+        else:
+            print("Invalid option") 
 
     def loop(self):
         # set sys.stdin non-blocking
