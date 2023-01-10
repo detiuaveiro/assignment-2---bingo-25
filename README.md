@@ -125,19 +125,66 @@ The protocol has 3 different functions used to receive a message (recv_msg), sen
 
 ## Game Structure and Logic
 
-&nbsp;
+### Processes
+#### Playing Area
 
-- ### Playing Area
+The Playing Area (PA) plays a crucial role in the game. It begins by establishing a socket and linking it to a specific address. The PA then listens for incoming connections from other sockets, such as players and the caller. As users connect and register, the PA stores their information, including their public keys and nicknames. The PA also maintains a log of all messages exchanged between users by continuously listening for new connections and messages.
+#### Caller
 
-&nbsp;
+The Caller is a special user who is responsible for managing the players during the game. They are designated as such by the Playing Area (PA), which maintains a list of approved Callers. If a player is accused of cheating, the PA verifies the accusations and may disqualify the player if they are found to have engaged in activities such as using an invalid signature or cheating in the deck shuffling process. The Caller is implemented as a class that is instantiated in run_caller.py, which establishes a socket connection with the PA. The Caller remains in a loop, waiting for messages and triggering certain events, for example, the process for sharing symmetric keys.
 
-- ### Caller
+#### Player
 
-&nbsp;
+The player is a user who participates in the game. They have a certain probability of cheating during various stages of the game. Like the Caller, the player is implemented as a class that first connects to the Playing Area (PA) and then waits for messages. When they receive a message, they may act upon it or respond as needed. The player class also has the ability to cheat with a certain probability during different stages of the game.
 
-- ### Player
+### Flow of Execution
 
-&nbsp;
+#### 1. Start of the Game and Authentication
+
+The first script that should be run is Playing Area's script, which starts the registration and authentication processes. Then, the Caller script should be run, since PA is programmed to register the first client socket as Caller (if its REGISTER MESSAGE is followed by a corresponding certificate to validate a Citizen Card as a Caller position). Then, the Player script should be run. When receiving a player's REGISTER MESSAGE, PA will broadcast the message to the Caller, which registers the player if the number of allowed players has not been surpassed. In this whole process, the Caller saves the registered players' data, that is, the PA's attributed ID, its nick, and its public key. 
+
+#### 2. Generation of the Playing Cards and Playing Deck
+
+
+When all players' slots are full, the Caller sends a command to start the game, using for that effect BEGIN_GAME messages sent to the PA, which contains all ID's of all players registered in the platform, such as public keys (including its own). That message is relayed to each player, in order to allow them to store all participants' public keys.
+
+Then, the Caller starts the deck's creation process, using the function generate_deck(), and sending to the PA the MESSAGE_DECK message with the encrypted deck, which was created by itself. When receiving this message, the PA runs the function deck_generation(), in which it will send the current deck to each player, ordered by ID, so that they proceed to shuffle the deck and encrypt its outcome, number by number, using the shuffle_deck() function. Simultaneously, the players will also generate its Playing Card, through the function generate_playing_card(), sending both the encrypted deck and its Playing Card to the PA, using the COMMIT_CARD message, while both are redirected to the Caller. This process is repeated until all players have had the opportunity to shuffle the deck and generate their Playing Card.
+At this point, the PA will send its final deck to the Caller, which in turn in sign it and declare it as the deck to be used in the game.
+
+#### 3. Playing Cards Validation
+
+After signing the Playing Deck to be used in the game, the Caller initiates the process of validating the Playing Cards by sending a message of the type SIGN_FINAL_DECK_ACK, which includes the Playing Cards sent by each player in the previous step. Receiving this message in the Playing Area initiates the execution of the share_sym_keys() function, in which it will request all Players for their symmetric keys to forward to the Caller, who will store them in a data structure. Then it runs the verify_playing_cards() function, in which it sends, one by one, the playing cards to the Players, so that everyone can verify that the cards follow the rules, without anyone cheating. For this, the sending is done using a VERIFY_CARDS message, which triggers the verify_cards() function in the Players, who respond with a VERIFY_CARD_OK message if no one cheated, or a VERIFY_CARD_NOK message with the ID of potential cheaters. After receiving responses from all Players, the Playing Area aggregates the information received in these messages and sends it to the Caller in a CHEAT_VERIFY message, which, based on the conclusions reached by the Players (and itself, since it also ran its verify_cards() function), decides if there are players to be disqualified or not. If there are, it calls the disqualify_player() function, in which a DISQUALIFY message is generated informing the Playing Area and all Players of the disqualification of a player. In response, the Playing Area and Players delete the information related to that player that they have stored in their list of active players, and the disqualified player gracefully ends its process.
+
+#### 4. Playing Deck Validation
+
+At this point, the Caller will begin the next stage of the game, sending the POST_FINAL_DECKS message to the Playing Area, with the symmetric key of each player, as well as the encrypted deck resulting from their shuffle. The Playing Area then executes the verify_playing_deck() function, forwarding this message from the Caller to each Player, one by one, and triggering the decrypt() function in their processes. Therefore, the Players will begin the process of decrypting the deck to verify if any Player cheated while doing the shuffling, with the Caller doing the same thing simultaneously, with the process being very similar to the oen described for the Playing Cards validation. As such, the Playing Area will aggregate the results obtained by the different Players, sending it to the Caller, who will verify if anyone cheated, according to the procedure described before.
+
+In case it's determined that someone cheated in the shuffling, the Caller will consider that the integrity of the game has been compromised, given that the intended original Playing Deck, and therefore the rightful winner, was manipulated. Thus, the Caller will end the game.
+
+#### 5. Finding the Winner
+
+Afterwards, the Caller will send an ASK_FOR_WINNER message to the Playing Area, which will forward it to all the Players in order to determine the winner, by using the find_winner() function. (It's worth pointing out that the Caller had already sent the Playing Cards of all Players to everyone else previously, at the end of stage 2).
+The Players will send the ID of the winners they have determined through the WINNER message, that is forwarded to the Caller. When the Caller verifies that all the remaining Players on the game have found a winner, he will check which of the Players have the same winners as he does, disqualifying any Player that reached a different conclusion. In the end, the Caller will inform the Players of the official winner, by sending a WINNER_ACK message. 
+It's worth pointing out that the possibility of there being multiple winners is considered, in the case when two players reach Bingo in the same round.
+
+#### 6. End of the Game
+
+After ending the game, the Players and the Caller can request the player list and the action log, or they can end the process, according to the user input.
+
+### Implementation of Cheating
+There are 3 main cheating methods implemented in the player code, and each of them send the corresponding cheat message when they, in fact, cheat.
+
+#### 1. Cheating when creating playing card
+
+There is a chance a player will generate a different playing card, one that is not randomly generated and therefore unfair compared to other users. When cheating, the player will create a deck based on the first element of the deck it received, and will have less elements, increasing its chances of winning unfairly.
+
+#### 2. Cheating when shuffling the deck
+
+Since all players need to shuffle the received deck, there is a chance one of those users will shuffle the deck not randomly, but in a way it could be beneficial to them and therefore, be unfair. 
+
+#### 3. Declaring player itself as a winner
+
+There is a chance a player will simply declare itself as the winner of the game, even though we most likely isn't, which is obviously not fair to all the other players who are playing fairly
 
 ## Security implemented in the game
 
@@ -177,7 +224,8 @@ To integrate the security module with the game logic we defined the following ru
 
 ## Conclusion
 
-&nbsp;
+Through this project we were able to infer about security in authentication, the use of certificates and signatures to increase it using as context the bingo game. Using PTEID we were able to authenticate both players and the caller, and using signed messages we could authenticate the sender of the data that was sent, which holds sensitive information. 
+All methods were implemented in case the caller or players cheated, in order to keep the game flowing and disqualify dishonest users.
 
 ## How to Run
 
