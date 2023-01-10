@@ -3,7 +3,6 @@
 import sys
 import socket
 import selectors
-from time import sleep
 import click
 import logging
 from pathlib import Path
@@ -34,7 +33,7 @@ logging.basicConfig(filename='security.log', filemode='w', level=logging.INFO, \
 def dispatch( srv_socket ):
     global PRIVATE_KEY
     global PUBLIC_KEY
-    global CONTADOR 
+    global CONTADOR
     global NHASHED
 
     selector = selectors.DefaultSelector()
@@ -61,12 +60,16 @@ def dispatch( srv_socket ):
             # Client data is available for reading
             else:
                 try:
-                    msg, signature, certificate = proto.Protocol.recv_msg( key.fileobj )
+                    message = (None, None)
+                    message = proto.Protocol.recv_msg(key.fileobj)
+                    msg = message[0]
+                    signature = message[1]
+                    certificate = message[2]
                 except:
-                    msg, signature = proto.Protocol.recv_msg( key.fileobj )
-                    
+                    msg, signature = message
+                    certificate = None
 
-                #print(f"Received message: {msg} with signature: {signature}")
+                
                 if signature is not None and certificate is None:
                     # Verify if the signature of the message belongs to the Client that sent it
                     sender_ID = msg.ID
@@ -93,7 +96,6 @@ def dispatch( srv_socket ):
                             logging.info('Sent Disqualify message to caller - %s', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
                             NHASHED = "Sent Disqualify message to caller"
                             CONTADOR += 1
-                            pass
                 
                 if signature is not None and certificate is not None:
                     print("Received a certificate. Validating it...")
@@ -117,7 +119,6 @@ def dispatch( srv_socket ):
                         continue
                     else:
                         print("The signature is not valid. The client will not be registered.")
-            
 
                 if msg == None:
                     if key.fileobj == CALLER[0]["socket"]:
@@ -147,13 +148,15 @@ def read_data(msg, signature, socket):
     """
     global PRIVATE_KEY
 
-
     global CONTADOR
     global NHASHED
 
     reply = None
-            
+
     if isinstance(msg, proto.Begin_Game):
+        logging.info('Received Begin_Game message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Begin_Game message"
+        CONTADOR += 1
         # Fazer forward da Mensagem para todos os jogadores
         print("Registration process is completed!\n\nTHE GAME WILL NOW START")
         print("\nStep 1. Generation of the Playing Deck and the Player Cards")
@@ -161,12 +164,16 @@ def read_data(msg, signature, socket):
         signature = secure.sign_message(msg, PRIVATE_KEY)
         broadcast_to_players(msg, signature, "Begin_Game")
     elif isinstance(msg, proto.Message_Deck):
-        # Processo de shuffling do deck
-        deck_generation(msg.deck)  #logs done 
-    elif isinstance(msg, proto.Sign_Final_Deck_ACK):
-        logging.info('Received Sign_Final_Deck_ACk message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-        NHASHED = "Received Sign_Final_Deck_ACk message"
+        logging.info('Received Message_Deck message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Message_Deck message"
         CONTADOR += 1
+        # Processo de shuffling do deck
+        deck_generation(msg.deck)
+    elif isinstance(msg, proto.Sign_Final_Deck_ACK):
+        logging.info('Received Sign_Final_Deck_Ack message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Sign_Final_Deck_Ack message"
+        CONTADOR += 1
+
         print("\nStep 2: Validating player cards")
         # Pedir chaves simétricas a todos os Utilizadors e enviar para o Caller
         reply = share_sym_keys()
@@ -175,36 +182,62 @@ def read_data(msg, signature, socket):
         reply = proto.SignedMessage(reply, signature)
         proto.Protocol.send_msg(socket, reply)
 
+        logging.info('Sent Post_Sym_Keys message to caller - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent Post_Sym_Keys message to caller"
+        CONTADOR += 1
+
         reply = verify_playing_cards(msg.playing_cards)
     elif isinstance(msg, proto.Disqualify):
+        logging.info('Received Disqualify message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Disqualify message"
+        CONTADOR += 1
         broadcast_to_players(msg, signature, "Disqualify")
         CONNECTED_PLAYERS.pop(int(msg.disqualified_ID))
         PLAYERS_INFO[int(msg.disqualified_ID)]["disqualified"] = True
     elif isinstance(msg, proto.Post_Final_Decks):
-        print("\nStep 3: Validating the Playing Deck")
-        print("Received all decks and symmetric keys. Broadcasting to players...")
         logging.info('Received Post_Final_Decks message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
         NHASHED = "Received Post_Final_Decks message"
         CONTADOR += 1
+        print("\nStep 3: Validating the Playing Deck")
+        print("Received all decks and symmetric keys. Broadcasting to players...")
         reply = verify_playing_deck(msg, signature)
+
     elif isinstance(msg, proto.Ask_For_Winner):
+        logging.info('Received Ask_For_Winner message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Ask_For_Winner message"
+        CONTADOR += 1
+
         print("\nStep 4: Determining the Winner")
         broadcast_to_players(msg, signature, "Ask_For_Winner")
     elif isinstance(msg, proto.Winner):
+        logging.info('Received Winner message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Winner message"
+        CONTADOR += 1
         new_msg = proto.SignedMessage(msg, signature)
         proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
+        logging.info('Sent Winner message to caller - %s', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent Winner message to caller"
+        CONTADOR += 1
     elif isinstance(msg, proto.Winner_ACK):
+        logging.info('Received Winner_ACK message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Winner_ACK message"
+        CONTADOR += 1
         broadcast_to_players(msg, signature, "Winner_ACK")
         print("\nThe game has succesfully finished!")
     elif isinstance(msg, proto.Get_Players_List):
+        logging.info('Received Get_Players_List message - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Received Get_Players_List message"
+        CONTADOR += 1
         print("Received request for Players List")
         reply = proto.Players_List(None, PLAYERS_INFO)
-
 
     if reply != None:
         signature = secure.sign_message(reply, PRIVATE_KEY)
         reply = proto.SignedMessage(reply, signature)
         proto.Protocol.send_msg(socket, reply)
+        logging.info('Sent Message  - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent Message"
+        CONTADOR += 1
 
 
 def register_new_client(msg, certificate, socket):
@@ -218,7 +251,6 @@ def register_new_client(msg, certificate, socket):
     global NUMBER_OF_PLAYERS
     global CURRENT_ID
     global PUBLIC_KEY
-    global CONNECTED_PLAYERS
     global CONTADOR
     global NHASHED
     cc_name, cc_number = vsc.get_name_and_number(certificate)
@@ -274,9 +306,10 @@ def deck_generation(initial_deck):
     During this process, the Playing Area will also receive the Playing Card form each Player
     :param initial_deck: The initial deck created by the Caller
     """
-    global CONTADOR
     global PRIVATE_KEY
+    global CONTADOR
     global NHASHED
+
     print("Deck shuffling process beginning: ")
     current_deck = initial_deck
 
@@ -292,17 +325,17 @@ def deck_generation(initial_deck):
         CONTADOR += 1
 
         # Wait for the reply
-        while(True):
+        while True:
             try:
-                reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
-                logging.info('Received a message from player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-                NHASHED = "Received a message from player " + str(player)
-                CONTADOR += 1
+                message = (None, None)
+                message = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+                reply = message[0]
+                signature = message[1]
+                certificate = message[2]
             except:
-                reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
-                logging.info('Received a message from player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-                NHASHED = "Received a message from player " + str(player)
-                CONTADOR += 1
+                reply, signature = message
+                certificate = None
+
             if isinstance(reply, proto.Commit_Card):
                 # If the player is sending a CHEAT message, ignore, else continue the process
                 break
@@ -313,6 +346,9 @@ def deck_generation(initial_deck):
 
         new_msg = proto.SignedMessage(reply, signature)
         proto.Protocol.send_msg(CALLER[0]["socket"], new_msg)
+        logging.info('Sent Commit_Card message to caller - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent Commit_Card message to caller"
+        CONTADOR += 1
 
         if isinstance(reply, proto.Commit_Card):
             current_deck = reply.deck
@@ -325,6 +361,7 @@ def deck_generation(initial_deck):
     logging.info('Sent Message_Deck message to caller - %s ', signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
     NHASHED = "Sent Message_Deck message to caller"
     CONTADOR += 1
+    
 
 
 def verify_playing_cards(playing_cards):
@@ -333,7 +370,6 @@ def verify_playing_cards(playing_cards):
     :return:
     """
     global PRIVATE_KEY
-
     global CONTADOR
     global NHASHED
 
@@ -347,21 +383,23 @@ def verify_playing_cards(playing_cards):
         # Enviar a carta ao jogador
         print(f"Sending all Playing Cards to player {player}, and waiting for their validation")
         proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
-        logging.info('Sent Message_Deck message to player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-        NHASHED = "Sent Message_Deck message to player " + str(player)
+        logging.info('Sent Verify_Cards message to player %s - %s ', str(player), signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
+        NHASHED = "Sent Verify_Cards message to player " + str(player)
         CONTADOR += 1
-
         # Esperar pela resposta 
         try:
-            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            message = (None, None)
+            message = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            reply = message[0]
+            signature = message[1]
+            certificate = message[2]
             logging.info('Received message from player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
             NHASHED = "Received message from player " + str(player)
             CONTADOR += 1 
-        except:
-            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
-            logging.info('Received message from player %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-            NHASHED = "Received message from player " + str(player)
-            CONTADOR += 1
+        except Exception as e:
+            print(e)
+            reply, signature = message
+            certificate = None
 
         if isinstance(reply, proto.Verify_Card_NOK):
             for player in reply.users:
@@ -376,7 +414,6 @@ def verify_playing_cards(playing_cards):
 
 def verify_playing_deck(msg, signature):
     global PRIVATE_KEY
-
     global CONTADOR
     global NHASHED
 
@@ -393,15 +430,18 @@ def verify_playing_deck(msg, signature):
         CONTADOR += 1
         # Esperar pela resposta
         try:
-            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            message = (None, None)
+            message = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            reply = message[0]
+            signature = message[1]
+            certificate = message[2]
             logging.info('Received message from player %s- %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
             NHASHED = "Received message from player " + str(player)
             CONTADOR += 1
-        except:
-            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
-            logging.info('Received message from player %s- %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-            NHASHED = "Received message from player " + str(player) 
-            CONTADOR += 1
+        except Exception as e:
+            print(e)
+            reply, signature = message
+            certificate = None
 
         if isinstance(reply, proto.Verify_Deck_NOK):
             for player in reply.users:
@@ -429,22 +469,22 @@ def share_sym_keys():
         NHASHED = "Sent Ask_Sym_Keys message to player " + str(player)
         CONTADOR += 1
         try:
-            reply, signature, certificate = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            message = (None, None)
+            message = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
+            reply = message[0]
+            signature = message[1]
+            certificate = message[2]
             logging.info('Received message from player %s- %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
             NHASHED = "Received message from player " + str(player)
             CONTADOR += 1
-        except:
-            reply, signature = proto.Protocol.recv_msg(CONNECTED_PLAYERS[player]["socket"])
-            logging.info('Received message from player %s- %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-            NHASHED = "Received message from player " + str(player)
-            CONTADOR += 1
+        except Exception as e:
+            print(e)
+            reply, signature = message
+            certificate = None
 
         sym_keys[player] = reply.sym_key
 
     # Enviar chaves simétricas ao Caller
-    logging.info('Sending Post_Sym_Keys message to caller - %s - %s ', player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
-    NHASHED = "Sending Post_Sym_Keys message to caller"
-    CONTADOR += 1
     return proto.Post_Sym_Keys(None, sym_keys)
 
 
@@ -464,11 +504,6 @@ def broadcast_to_players(msg, signature, string):
         logging.info('Sent %s message to player %s - %s ', string, player, signature, extra={'seq': CONTADOR, 'hash': hash(NHASHED)})
         NHASHED = "Sent " + string + " message to player " + str(player)
         CONTADOR += 1
-
-
-
-    for player in CONNECTED_PLAYERS.keys():
-        proto.Protocol.send_msg(CONNECTED_PLAYERS[player]["socket"], new_msg)
 
 
 @click.command()

@@ -71,9 +71,14 @@ class Caller:
 
         # Verificação da resposta recebida
         try:
-            msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+            message = (None, None)
+            message = proto.Protocol.recv_msg(self.socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
         except:
-            msg, signature = proto.Protocol.recv_msg(self.socket)
+            msg, signature = message
+            certificate = None
 
         if isinstance(msg, proto.Register_NACK):
             # Playing Area rejeitou Caller
@@ -81,14 +86,8 @@ class Caller:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
-            if not secure.verify_signature(msg, signature, msg.pk):
-                # Playing Area signature is faked
-                print("The Playing Area signature was forged! The game is compromised.")
-                print("Shutting down...")
-                exit()
-            else:
-                self.playing_area_pk = msg.pk
-                print("Register Accepted")
+            self.playing_area_pk = msg.pk
+            print("Register Accepted")
 
 
     def read_data(self, socket):
@@ -98,9 +97,15 @@ class Caller:
         :return:
         """
         try:
-            msg, signature, certificate = proto.Protocol.recv_msg(socket)
-        except:
-            msg, signature = proto.Protocol.recv_msg(socket)
+            message = (None, None)
+            message = proto.Protocol.recv_msg(socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
+        except Exception as e:
+            print(e)
+            msg, signature = message
+            certificate = None
 
         # Verify if the signature of the message belongs to the Playing Area
         if signature is not None:
@@ -112,9 +117,6 @@ class Caller:
 
             if not secure.verify_signature(msg, signature, sender_pub_key):
                 if sender_ID is None:
-                    print(msg)
-                    print(signature)
-                    print(sender_pub_key)
                     # If the Playing Area signature is faked, the game is compromised
                     print("The Playing Area signature was forged! The game is compromised.")
                     print("Shutting down...")
@@ -168,7 +170,7 @@ class Caller:
         elif isinstance(msg, proto.Cheat_Verify):
             # Verify if another Player detected cheating
             for player in msg.cheaters:
-                if not msg.cheaters[player]:
+                if not msg.cheaters[player] and int(player) in self.PLAYERS:
                     self.PLAYERS[int(player)]["cheated"] = True
 
             # If a player has cheated, disqualify them

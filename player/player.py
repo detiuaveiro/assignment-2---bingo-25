@@ -64,9 +64,14 @@ class Player:
 
         # Verificação da resposta recebida
         try:
-            msg, signature, certificate = proto.Protocol.recv_msg(self.socket)
+            message = (None, None)
+            message = proto.Protocol.recv_msg(self.socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
         except:
-            msg, signature = proto.Protocol.recv_msg(self.socket)
+            msg, signature = message
+            certificate = None
         #print(f"Received: {msg} with signature {signature}")
 
         if isinstance(msg, proto.Register_NACK):
@@ -75,15 +80,9 @@ class Player:
             print("Shutting down...")
             exit()
         elif isinstance(msg, proto.Register_ACK):
-            if not secure.verify_signature(msg, signature, msg.pk):
-                # Playing Area signature is faked
-                print("The Playing Area signature was forged! The game is compromised.")
-                print("Shutting down...")
-                exit()
-            else:
-                self.playing_area_pk = msg.pk
-                self.ID = msg.ID
-                print("Register Accepted")
+            self.playing_area_pk = msg.pk
+            self.ID = msg.ID
+            print("Register Accepted")
 
     def read_data(self, socket):
         """
@@ -92,9 +91,14 @@ class Player:
         :return:
         """
         try:
-            msg, signature, certificate = proto.Protocol.recv_msg(socket)
+            message = (None, None)
+            message = proto.Protocol.recv_msg(socket)
+            msg = message[0]
+            signature = message[1]
+            certificate = message[2]
         except:
-            msg, signature = proto.Protocol.recv_msg(socket)
+            msg, signature = message
+            certificate = None
 
 
         # Verify if the signature of the message belongs to the Playing Area
@@ -207,7 +211,7 @@ class Player:
         """
         self.sym_key = secure.gen_symmetric_key()
         rand = random.randint(0, 100)
-        if rand>10:
+        if rand>5:
             new_deck = []
             for number in deck:
                 new_deck.append(base64.b64encode(secure.encrypt_number(base64.b64decode(number), self.sym_key)).decode('utf-8'))
