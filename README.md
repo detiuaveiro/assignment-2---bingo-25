@@ -6,12 +6,12 @@
 
 This assignment will focus on the implementation of a robust protocol for handling a distributed game. The game under study will be Bingo, which is a game of chance. Implementation will consist of a server (caller) and multiple clients (players) communicating over a network (playing area).
 
-## Authors
+## Development Team
 
-- Artur Correia (nº mec 102477)
-- André Butuc (nº mec 103530)
-- Bruna Simões (nº mec 103453)
-- Daniel Carvalho (nº mec 77036)
+- [André Butuc](https://github.com/abutuc) (andrebutuc@ua.pt)
+- [Artur Correia](https://github.com/afarturc) (art.afo@ua.pt)
+- [Bruna Simões](https://github.com/Brums21) (brunams21@ua.pt)
+- [Daniel Carvalho](https://github.com/danielfcarvalho) (dl.carvalho@ua.pt)
 
 ## Message Protocol
 
